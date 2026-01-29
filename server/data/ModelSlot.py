@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict, field
 
 import os
 import json
+import copy
 
 
 @dataclass
@@ -163,45 +164,63 @@ ModelSlots: TypeAlias = Union[
 ]
 
 
+_slot_cache = {}
+
+
 def loadSlotInfo(model_dir: str, slotIndex: int | StaticSlot) -> ModelSlots:
+    global _slot_cache
     slotDir = os.path.join(model_dir, str(slotIndex))
     jsonFile = os.path.join(slotDir, "params.json")
-    if not os.path.exists(jsonFile):
+
+    try:
+        stat_res = os.stat(jsonFile)
+        mtime = stat_res.st_mtime
+    except OSError:
         return ModelSlot()
+
+    cache_key = f"{model_dir}::{slotIndex}"
+    if cache_key in _slot_cache:
+        cached_mtime, cached_obj = _slot_cache[cache_key]
+        if cached_mtime == mtime:
+            return copy.deepcopy(cached_obj)
+
     jsonDict = json.load(open(jsonFile, encoding="utf-8"))
     slotInfoKey = list(ModelSlot.__annotations__.keys())
     slotInfo = ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+
+    final_slot = None
     if slotInfo.voiceChangerType == "RVC":
         slotInfoKey.extend(list(RVCModelSlot.__annotations__.keys()))
-        return RVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = RVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "MMVCv13":
         slotInfoKey.extend(list(MMVCv13ModelSlot.__annotations__.keys()))
-        return MMVCv13ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = MMVCv13ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "MMVCv15":
         slotInfoKey.extend(list(MMVCv15ModelSlot.__annotations__.keys()))
-        return MMVCv15ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = MMVCv15ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "so-vits-svc-40":
         slotInfoKey.extend(list(SoVitsSvc40ModelSlot.__annotations__.keys()))
-        return SoVitsSvc40ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = SoVitsSvc40ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "DDSP-SVC":
         slotInfoKey.extend(list(DDSPSVCModelSlot.__annotations__.keys()))
-        return DDSPSVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = DDSPSVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "Diffusion-SVC":
         slotInfoKey.extend(list(DiffusionSVCModelSlot.__annotations__.keys()))
-        return DiffusionSVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = DiffusionSVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "Beatrice":
         slotInfoKey.extend(list(BeatriceModelSlot.__annotations__.keys()))
-        if slotIndex == "Beatrice-JVS":  # STATIC Model
-            return BeatriceModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
-        return BeatriceModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = BeatriceModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "LLVC":
         slotInfoKey.extend(list(LLVCModelSlot.__annotations__.keys()))
-        return LLVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = LLVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     elif slotInfo.voiceChangerType == "EasyVC":
         slotInfoKey.extend(list(EasyVCModelSlot.__annotations__.keys()))
-        return EasyVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
+        final_slot = EasyVCModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     else:
-        return ModelSlot()
+        final_slot = ModelSlot()
+
+    _slot_cache[cache_key] = (mtime, final_slot)
+    return copy.deepcopy(final_slot)
 
 
 def loadAllSlotInfo(model_dir: str):
