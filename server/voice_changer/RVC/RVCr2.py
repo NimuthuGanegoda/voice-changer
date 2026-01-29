@@ -219,6 +219,8 @@ class RVCr2(VoiceChangerModel):
         f0_up_key = self.settings.tran
         index_rate = self.settings.indexRatio
         protect = self.settings.protect
+        indexK = self.settings.indexK
+        k = indexK if indexK > 0 else 1
 
         if_f0 = 1 if self.slotInfo.f0 else 0
         embOutputLayer = self.slotInfo.embOutputLayer
@@ -240,6 +242,7 @@ class RVCr2(VoiceChangerModel):
                 repeat,
                 protect,
                 outSize,
+                k
             )
             # result = audio_out.detach().cpu().numpy() * np.sqrt(vol)
             result = audio_out[-outSize:].detach().cpu().numpy() * np.sqrt(vol)
