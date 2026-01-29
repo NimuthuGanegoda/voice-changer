@@ -29,6 +29,7 @@ from Exceptions import (
     PipelineNotInitializedException,
 )
 import resampy
+import torchaudio
 from typing import cast
 
 logger = VoiceChangaerLogger.get_instance().getLogger()
@@ -53,6 +54,9 @@ class RVCr2(VoiceChangerModel):
         self.feature_buffer: FeatureInOut | None = None
         self.prevVol = 0.0
         self.slotInfo = slotInfo
+
+        self.inputResampler: torchaudio.transforms.Resample | None = None
+        self.outputResampler: torchaudio.transforms.Resample | None = None
         # self.initialize()
 
     def initialize(self):
@@ -185,15 +189,19 @@ class RVCr2(VoiceChangerModel):
             raise PipelineNotInitializedException()
 
         # 処理は16Kで実施(Pitch, embed, (infer))
-        receivedData = cast(
-            AudioInOut,
-            resampy.resample(
-                receivedData,
-                self.inputSampleRate,
-                16000,
-                filter="kaiser_fast",
-            ),
-        )
+        if (
+            self.inputResampler is None
+            or self.inputResampler.orig_freq != self.inputSampleRate
+            or self.inputResampler.new_freq != 16000
+        ):
+            self.inputResampler = torchaudio.transforms.Resample(
+                self.inputSampleRate, 16000
+            )
+
+        receivedData_tensor = torch.from_numpy(receivedData).float()
+        receivedData_tensor = self.inputResampler(receivedData_tensor)
+        receivedData = receivedData_tensor.numpy()
+
         crossfade_frame = int((crossfade_frame / self.inputSampleRate) * 16000)
         sola_search_frame = int((sola_search_frame / self.inputSampleRate) * 16000)
         extra_frame = int((self.settings.extraConvertSize / self.inputSampleRate) * 16000)
@@ -245,17 +253,25 @@ class RVCr2(VoiceChangerModel):
                 k
             )
             # result = audio_out.detach().cpu().numpy() * np.sqrt(vol)
-            result = audio_out[-outSize:].detach().cpu().numpy() * np.sqrt(vol)
+            result_tensor = audio_out[-outSize:].float()
 
-            result = cast(
-                AudioInOut,
-                resampy.resample(
-                    result,
-                    self.slotInfo.samplingRate,
-                    self.outputSampleRate,
-                    filter="kaiser_fast",
-                ),
-            )
+            # Output Resampling
+            model_sr = self.slotInfo.samplingRate
+            target_sr = self.outputSampleRate
+
+            if (
+                self.outputResampler is None
+                or self.outputResampler.orig_freq != model_sr
+                or self.outputResampler.new_freq != target_sr
+            ):
+                self.outputResampler = torchaudio.transforms.Resample(
+                    model_sr, target_sr
+                ).to(device)
+            elif hasattr(self.outputResampler, "kernel") and self.outputResampler.kernel.device != device:
+                self.outputResampler = self.outputResampler.to(device)
+
+            result_tensor = self.outputResampler(result_tensor)
+            result = result_tensor.detach().cpu().numpy() * np.sqrt(vol)
 
             return result
         except DeviceCannotSupportHalfPrecisionException as e:  # NOQA
