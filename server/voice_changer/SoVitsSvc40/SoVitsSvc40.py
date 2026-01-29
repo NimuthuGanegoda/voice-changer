@@ -150,6 +150,9 @@ class SoVitsSvc40(VoiceChangerModel):
     def getOnnxExecutionProvider(self):
         availableProviders = onnxruntime.get_available_providers()
         devNum = torch.cuda.device_count()
+        if self.settings.gpu == 65536 and "OpenVINOExecutionProvider" in availableProviders:
+            return ["OpenVINOExecutionProvider"], [{"device_type": "NPU"}]
+
         if (
             self.settings.gpu >= 0
             and "CUDAExecutionProvider" in availableProviders
