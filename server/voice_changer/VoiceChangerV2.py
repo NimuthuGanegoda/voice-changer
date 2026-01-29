@@ -295,7 +295,6 @@ class VoiceChangerV2(VoiceChangerIF):
                 print_convert_processing(f" Output data size of {result.shape[0]}/{processing_sampling_rate}hz {result .shape[0]}/{self.settings.outputSampleRate}hz")
 
                 if receivedData.shape[0] != result.shape[0]:
-                    # print("TODO FIX:::::PADDING", receivedData.shape[0], result.shape[0])
                     if self.voiceChanger.voiceChangerType == "LLVC":
                         outputData = result
                     else:
@@ -369,8 +368,12 @@ def print_convert_processing(mess: str):
 
 def pad_array(arr: AudioInOut, target_length: int):
     current_length = arr.shape[0]
-    if current_length >= target_length:
+    if current_length == target_length:
         return arr
+    elif current_length > target_length:
+        cut_width = current_length - target_length
+        cut_left = cut_width // 2
+        return arr[cut_left : cut_left + target_length]
     else:
         pad_width = target_length - current_length
         pad_left = pad_width // 2
