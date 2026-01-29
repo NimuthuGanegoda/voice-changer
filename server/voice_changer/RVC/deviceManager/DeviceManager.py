@@ -70,19 +70,6 @@ class DeviceManager(object):
         if self.forceTensor:
             return False
 
-        try:
-            gpuName = torch.cuda.get_device_name(id).upper()
-            if (
-                ("16" in gpuName and "V100" not in gpuName)
-                or "P40" in gpuName.upper()
-                or "1070" in gpuName
-                or "1080" in gpuName
-            ):
-                return False
-        except Exception as e:
-            print(e)
-            return False
-
         cap = torch.cuda.get_device_capability(id)
         if cap[0] < 7:  # コンピューティング機能が7以上の場合half precisionが使えるとされている（が例外がある？T500とか）
             return False
