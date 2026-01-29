@@ -123,6 +123,16 @@ class VoiceChangerManager(ServerDeviceCallbacks):
             memory = torch.cuda.get_device_properties(id).total_memory
             gpu = {"id": id, "name": name, "memory": memory}
             gpus.append(gpu)
+
+        try:
+            import onnxruntime
+
+            if "OpenVINOExecutionProvider" in onnxruntime.get_available_providers():
+                gpu = {"id": 65536, "name": "OpenVINO/NPU", "memory": 0}
+                gpus.append(gpu)
+        except Exception as e:
+            logger.warn(f"[Voice Changer] OpenVINO detection failed. {e}")
+
         return gpus
 
     @classmethod

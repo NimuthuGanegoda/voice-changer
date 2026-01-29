@@ -36,6 +36,9 @@ class DeviceManager(object):
     def getOnnxExecutionProvider(self, gpu: int):
         availableProviders = onnxruntime.get_available_providers()
         devNum = torch.cuda.device_count()
+        if gpu == 65536 and "OpenVINOExecutionProvider" in availableProviders:
+            return ["OpenVINOExecutionProvider"], [{"device_type": "NPU"}]
+
         if gpu >= 0 and "CUDAExecutionProvider" in availableProviders and devNum > 0:
             if gpu < devNum:  # ひとつ前のif文で弾いてもよいが、エラーの解像度を上げるため一段下げ。
                 return ["CUDAExecutionProvider"], [{"device_id": gpu}]
