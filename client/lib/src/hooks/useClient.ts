@@ -119,6 +119,8 @@ export const useClient = (props: UseClientProps): ClientState => {
         };
     }, [voiceChangerClientRef.current]);
 
+    const lastPerformanceNotificationTime = useRef<number>(0);
+
     // (1-4) エラーステータス
     const ioErrorCountRef = useRef<number>(0);
     const resetIoErrorCount = () => {
@@ -165,6 +167,11 @@ export const useClient = (props: UseClientProps): ClientState => {
                     setBufferingTime(val);
                 },
                 notifyResponseTime: (val: number, perf?: number[]) => {
+                    const now = Date.now();
+                    if (now - lastPerformanceNotificationTime.current < 1000) {
+                        return;
+                    }
+                    lastPerformanceNotificationTime.current = now;
                     const responseTime = val;
                     const preprocessTime = perf ? Math.ceil(perf[0] * 1000) : 0;
                     const mainprocessTime = perf ? Math.ceil(perf[1] * 1000) : 0;
