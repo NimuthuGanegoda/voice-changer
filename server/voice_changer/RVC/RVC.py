@@ -162,6 +162,8 @@ class RVC(VoiceChangerModel):
         f0_up_key = self.settings.tran
         index_rate = self.settings.indexRatio
         protect = self.settings.protect
+        indexK = self.settings.indexK
+        k = indexK if indexK > 0 else 1
 
         if_f0 = 1 if self.slotInfo.f0 else 0
         embOutputLayer = self.slotInfo.embOutputLayer
@@ -181,7 +183,8 @@ class RVC(VoiceChangerModel):
                 useFinalProj,
                 repeat,
                 protect,
-                outSize
+                outSize,
+                k
             )
             result = audio_out.detach().cpu().numpy() * np.sqrt(vol)
 

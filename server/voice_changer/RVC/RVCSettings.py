@@ -16,6 +16,7 @@ class RVCSettings:
     rvcQuality: int = 0
     silenceFront: int = 1  # 0:off, 1:on
     modelSamplingRate: int = 48000
+    indexK: int = 0
 
     speakers: dict[str, int] = field(default_factory=lambda: {})
     # isHalf: int = 1  # 0:off, 1:on
@@ -28,6 +29,7 @@ class RVCSettings:
         "extraConvertSize",
         "rvcQuality",
         "silenceFront",
+        "indexK",
     ]
     floatData = ["silentThreshold", "indexRatio", "protect"]
     strData = ["f0Detector"]
