@@ -15,6 +15,6 @@ module.exports = merge(common, {
             },
         },
         host: "0.0.0.0",
-        https: true,
+        server: "https",
     },
 })
