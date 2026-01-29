@@ -26,6 +26,7 @@ class MMVC_Namespace(socketio.AsyncNamespace):
         self.voiceChangerManager = voiceChangerManager
         # self.voiceChangerManager.voiceChanger.emitTo = self.emit_coroutine
         self.voiceChangerManager.setEmitTo(self.emit_coroutine)
+        self.lock = asyncio.Lock()
 
     @classmethod
     def get_instance(cls, voiceChangerManager: VoiceChangerManager):
@@ -49,7 +50,10 @@ class MMVC_Namespace(socketio.AsyncNamespace):
         else:
             unpackedData = np.array(struct.unpack("<%sh" % (len(data) // struct.calcsize("<h")), data)).astype(np.int16)
 
-            res = self.voiceChangerManager.changeVoice(unpackedData)
+            async with self.lock:
+                loop = asyncio.get_running_loop()
+                res = await loop.run_in_executor(None, self.voiceChangerManager.changeVoice, unpackedData)
+
             audio1 = res[0]
             perf = res[1] if len(res) == 2 else [0, 0, 0]
             bin = struct.pack("<%sh" % len(audio1), *audio1)
