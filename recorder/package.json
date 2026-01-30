@@ -6,7 +6,12 @@
     "scripts": {
         "clean": "rimraf ../docs/*",
         "webpack": "webpack --config webpack.prod.js",
+        "webpack:optimized": "webpack --config webpack.optimized.js",
+        "webpack:optimized-entry": "webpack --config webpack.optimized.entry.js",
         "build": "run-s clean webpack",
+        "build:optimized": "run-s clean webpack:optimized",
+        "build:optimized-entry": "run-s clean webpack:optimized-entry",
+        "analyze-bundle": "node bundle-analyze.js",
         "start": "webpack-dev-server  --config webpack.dev.js",
         "start:backend": "python3 backend/recorderServer.py  8000",
         "copy": "cp -r ./docs/* ../voice-changer/docs/ && cp ./backend/recorderServer.py ../voice-changer/docs/",
