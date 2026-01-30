@@ -1,0 +1,25 @@
+The following files and directories have been identified as outdated (old as 2 or 3 years or deprecated):
+
+1. start_v0.1.sh
+   - References Docker image `dannadori/voice-changer:20221028_220714` (October 2022).
+   - Supports deprecated modes (MMVC, SOFT_VC).
+
+2. start2.sh
+   - References Docker image `dannadori/voice-changer:20230129_152955` (January 2023).
+   - Supports deprecated modes (MMVC).
+
+3. server/voice_changer/MMVCv13/
+   - Implementation of MMVC v1.3, which is a legacy model type (v1) no longer supported in v2.
+
+4. server/voice_changer/MMVCv15/
+   - Implementation of MMVC v1.5, which is a legacy model type (v1) no longer supported in v2.
+
+5. server/voice_changer/SoVitsSvc40/
+   - Implementation of So-Vits-Svc 4.0, which is listed as "n/a" (not supported) in v2 documentation.
+
+6. server/voice_changer/DDSP_SVC/
+   - Implementation of DDSP-SVC, which is listed as "n/a" (not supported) in v2 documentation.
+
+7. docker_trainer/
+   - Contains Dockerfile and scripts for training MMVC models, which are deprecated.
+   - References 2022 dates in README and requirements.
