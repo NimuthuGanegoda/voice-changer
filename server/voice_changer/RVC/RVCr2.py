@@ -16,6 +16,7 @@ from voice_changer.utils.VoiceChangerModel import (
     FeatureInOut,
     VoiceChangerModel,
 )
+from voice_changer.utils.OptimizedBuffer import OptimizedBuffer
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 from voice_changer.RVC.onnxExporter.export2onnx import export2onnx
 from voice_changer.RVC.pitchExtractor.PitchExtractorManager import PitchExtractorManager
@@ -52,6 +53,11 @@ class RVCr2(VoiceChangerModel):
         self.audio_buffer: AudioInOut | None = None
         self.pitchf_buffer: PitchfInOut | None = None
         self.feature_buffer: FeatureInOut | None = None
+
+        self._audio_buffer_opt = OptimizedBuffer(np.float32)
+        self._pitchf_buffer_opt = OptimizedBuffer(np.float64) # np.zeros default is float64
+        self._feature_buffer_opt = OptimizedBuffer(np.float64, channels=self.slotInfo.embChannels)
+
         self.prevVol = 0.0
         self.slotInfo = slotInfo
 
@@ -122,49 +128,24 @@ class RVCr2(VoiceChangerModel):
         newData = newData.astype(np.float32) / 32768.0
         newFeatureLength = inputSize // 160  # hopsize:=160
 
-        if self.audio_buffer is not None:
-            # 過去のデータに連結
-            self.audio_buffer = np.concatenate([self.audio_buffer, newData], 0)
-            if self.slotInfo.f0:
-                self.pitchf_buffer = np.concatenate([self.pitchf_buffer, np.zeros(newFeatureLength)], 0)
-            self.feature_buffer = np.concatenate(
-                [
-                    self.feature_buffer,
-                    np.zeros([newFeatureLength, self.slotInfo.embChannels]),
-                ],
-                0,
-            )
-        else:
-            self.audio_buffer = newData
-            if self.slotInfo.f0:
-                self.pitchf_buffer = np.zeros(newFeatureLength)
-            self.feature_buffer = np.zeros([newFeatureLength, self.slotInfo.embChannels])
-
         convertSize = inputSize + crossfadeSize + solaSearchFrame + extra_frame
 
         if convertSize % 160 != 0:  # モデルの出力のホップサイズで切り捨てが発生するので補う。
             convertSize = convertSize + (160 - (convertSize % 160))
         outSize = int(((convertSize - extra_frame) / 16000) * self.slotInfo.samplingRate)
 
-        # バッファがたまっていない場合はzeroで補う
-        if self.audio_buffer.shape[0] < convertSize:
-            self.audio_buffer = np.concatenate([np.zeros([convertSize]), self.audio_buffer])
-            if self.slotInfo.f0:
-                self.pitchf_buffer = np.concatenate([np.zeros([convertSize // 160]), self.pitchf_buffer])
-            self.feature_buffer = np.concatenate(
-                [
-                    np.zeros([convertSize // 160, self.slotInfo.embChannels]),
-                    self.feature_buffer,
-                ]
-            )
+        # audio
+        self.audio_buffer = self._audio_buffer_opt.push_and_get(newData, convertSize)
 
-        # 不要部分をトリミング
-        convertOffset = -1 * convertSize
-        featureOffset = convertOffset // 160
-        self.audio_buffer = self.audio_buffer[convertOffset:]  # 変換対象の部分だけ抽出
+        feature_convert_size = convertSize // 160
+
+        # pitchf & feature
         if self.slotInfo.f0:
-            self.pitchf_buffer = self.pitchf_buffer[featureOffset:]
-        self.feature_buffer = self.feature_buffer[featureOffset:]
+            pitchf_zeros = np.zeros(newFeatureLength)
+            self.pitchf_buffer = self._pitchf_buffer_opt.push_and_get(pitchf_zeros, feature_convert_size)
+
+        feature_zeros = np.zeros((newFeatureLength, self.slotInfo.embChannels))
+        self.feature_buffer = self._feature_buffer_opt.push_and_get(feature_zeros, feature_convert_size)
 
         # 出力部分だけ切り出して音量を確認。(TODO:段階的消音にする)
         cropOffset = -1 * (inputSize + crossfadeSize)
@@ -227,6 +208,8 @@ class RVCr2(VoiceChangerModel):
         f0_up_key = self.settings.tran
         index_rate = self.settings.indexRatio
         protect = self.settings.protect
+        indexK = self.settings.indexK
+        k = indexK if indexK > 0 else 1
 
         if_f0 = 1 if self.slotInfo.f0 else 0
         embOutputLayer = self.slotInfo.embOutputLayer
@@ -248,7 +231,14 @@ class RVCr2(VoiceChangerModel):
                 repeat,
                 protect,
                 outSize,
+                k
             )
+
+            if self.pitchf_buffer is not None:
+                self._pitchf_buffer_opt.set_content(self.pitchf_buffer)
+            if self.feature_buffer is not None:
+                self._feature_buffer_opt.set_content(self.feature_buffer)
+
             # result = audio_out.detach().cpu().numpy() * np.sqrt(vol)
             result_tensor = audio_out[-outSize:].float()
 

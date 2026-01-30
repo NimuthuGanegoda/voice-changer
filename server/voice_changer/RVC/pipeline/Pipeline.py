@@ -143,6 +143,7 @@ class Pipeline(object):
         repeat,
         protect=0.5,
         out_size=None,
+        k=1,
     ):
         # print(f"pipeline exec input, audio:{audio.shape}, pitchf:{pitchf.shape}, feature:{feature.shape}")
         # print(f"pipeline exec input, silence_front:{silence_front}, out_size:{out_size}")
@@ -194,13 +195,11 @@ class Pipeline(object):
                 if self.isHalf is True:
                     npy = npy.astype("float32")
 
-                # TODO: kは調整できるようにする
-                k = 1
                 if k == 1:
                     _, ix = self.index.search(npy, 1)
                     npy = self.big_npy[ix.squeeze()]
                 else:
-                    score, ix = self.index.search(npy, k=8)
+                    score, ix = self.index.search(npy, k=k)
                     weight = np.square(1 / score)
                     weight /= weight.sum(axis=1, keepdims=True)
                     npy = np.sum(self.big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
