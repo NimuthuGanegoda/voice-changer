@@ -52,14 +52,14 @@ def setupArgParser():
     parser.add_argument("--model_dir", type=str, default="model_dir", help="path to model files")
     parser.add_argument("--sample_mode", type=str, default="production", help="rvc_sample_mode")
 
-    parser.add_argument("--content_vec_500", type=str, default="pretrain/checkpoint_best_legacy_500.pt", help="path to content_vec_500 model(pytorch)")
-    parser.add_argument("--content_vec_500_onnx", type=str, default="pretrain/content_vec_500.onnx", help="path to content_vec_500 model(onnx)")
-    parser.add_argument("--content_vec_500_onnx_on", type=strtobool, default=True, help="use or not onnx for  content_vec_500")
-    parser.add_argument("--hubert_base", type=str, default="pretrain/hubert_base.pt", help="path to hubert_base model(pytorch)")
-    parser.add_argument("--hubert_base_jp", type=str, default="pretrain/rinna_hubert_base_jp.pt", help="path to hubert_base_jp model(pytorch)")
-    parser.add_argument("--hubert_soft", type=str, default="pretrain/hubert/hubert-soft-0d54a1f4.pt", help="path to hubert_soft model(pytorch)")
-    parser.add_argument("--whisper_tiny", type=str, default="pretrain/whisper_tiny.pt", help="path to hubert_soft model(pytorch)")
-    parser.add_argument("--nsf_hifigan", type=str, default="pretrain/nsf_hifigan/model", help="path to nsf_hifigan model(pytorch)")
+    parser.add_argument("--content_vec_500", type=str, default="pretrain/checkpoint_best_legacy_500.pt", help="path to content_vec_500 model (pytorch)")
+    parser.add_argument("--content_vec_500_onnx", type=str, default="pretrain/content_vec_500.onnx", help="path to content_vec_500 model (onnx)")
+    parser.add_argument("--content_vec_500_onnx_on", type=strtobool, default=True, help="use onnx for content_vec_500")
+    parser.add_argument("--hubert_base", type=str, default="pretrain/hubert_base.pt", help="path to hubert_base model (pytorch)")
+    parser.add_argument("--hubert_base_jp", type=str, default="pretrain/rinna_hubert_base_jp.pt", help="path to hubert_base_jp model (pytorch)")
+    parser.add_argument("--hubert_soft", type=str, default="pretrain/hubert/hubert-soft-0d54a1f4.pt", help="path to hubert_soft model (pytorch)")
+    parser.add_argument("--whisper_tiny", type=str, default="pretrain/whisper_tiny.pt", help="path to whisper_tiny model (pytorch)")
+    parser.add_argument("--nsf_hifigan", type=str, default="pretrain/nsf_hifigan/model", help="path to nsf_hifigan model (pytorch)")
     parser.add_argument("--crepe_onnx_full", type=str, default="pretrain/crepe_onnx_full.onnx", help="path to crepe_onnx_full")
     parser.add_argument("--crepe_onnx_tiny", type=str, default="pretrain/crepe_onnx_tiny.onnx", help="path to crepe_onnx_tiny")
     parser.add_argument("--rmvpe", type=str, default="pretrain/rmvpe.pt", help="path to rmvpe")
@@ -181,9 +181,9 @@ if __name__ == "__main__":
         EX_IP = os.environ["EX_IP"]
         printMessage(f"External_IP:{EX_IP}", level=1)
 
-    # HTTPS key/cert作成
+    # Create HTTPS key/cert
     if args.https and args.httpsSelfSigned == 1:
-        # HTTPS(おれおれ証明書生成)
+        # HTTPS (Generate self-signed certificate)
         os.makedirs(SSL_KEY_DIR, exist_ok=True)
         key_base_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         keyname = f"{key_base_name}.key"
@@ -192,11 +192,11 @@ if __name__ == "__main__":
             certname,
             keyname,
             certargs={
-                "Country": "JP",
-                "State": "Tokyo",
-                "City": "Chuo-ku",
-                "Organization": "F",
-                "Org. Unit": "F",
+                "Country": "US",
+                "State": "Washington",
+                "City": "Seattle",
+                "Organization": "Voice Changer",
+                "Org. Unit": "Dev",
             },
             cert_dir=SSL_KEY_DIR,
         )
@@ -214,24 +214,24 @@ if __name__ == "__main__":
         printMessage("protocol: HTTP", level=1)
     printMessage("-- ---- -- ", level=1)
 
-    # アドレス表示
+    # Display addresses
     printMessage("Please open the following URL in your browser.", level=2)
-    # printMessage("ブラウザで次のURLを開いてください.", level=2)
+    # printMessage("Please open the following URL in your browser.", level=2)
     if args.https == 1:
         printMessage("https://<IP>:<PORT>/", level=1)
     else:
         printMessage("http://<IP>:<PORT>/", level=1)
 
-    # printMessage("多くの場合は次のいずれかのURLにアクセスすると起動します。", level=2)
+    # printMessage("In many cases, it will launch when you access any of the following URLs.", level=2)
     printMessage("In many cases, it will launch when you access any of the following URLs.", level=2)
-    if "EX_PORT" in locals() and "EX_IP" in locals():  # シェルスクリプト経由起動(docker)
+    if "EX_PORT" in locals() and "EX_IP" in locals():  # Launched via shell script (docker)
         if args.https == 1:
             printMessage(f"https://localhost:{EX_PORT}/", level=1)
             for ip in EX_IP.strip().split(" "):
                 printMessage(f"https://{ip}:{EX_PORT}/", level=1)
         else:
             printMessage(f"http://localhost:{EX_PORT}/", level=1)
-    else:  # 直接python起動
+    else:  # Launched directly with python
         if args.https == 1:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect((args.test_connect, 80))
@@ -241,9 +241,9 @@ if __name__ == "__main__":
         else:
             printMessage(f"http://localhost:{PORT}/", level=1)
 
-    # サーバ起動
+    # Launch server
     if args.https:
-        # HTTPS サーバ起動
+        # Launch HTTPS server
         try:
             localServer(args.logLevel, key_path, cert_path)
         except Exception as e:
