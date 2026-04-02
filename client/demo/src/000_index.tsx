@@ -39,8 +39,8 @@ const AppStateWrapper = () => {
     // エラーメッセージ登録
     useMemo(() => {
         messageBuilderState.setMessage(__filename, "Problem", { ja: "ちょっと問題が起きたみたいです。", en: "Looks like there's a bit of a problem." });
-        messageBuilderState.setMessage(__filename, "Problem-sub1", { ja: "このアプリで管理している情報をクリアすると回復する場合があります。", en: "" });
-        messageBuilderState.setMessage(__filename, "Problem-sub2", { ja: "下記のボタンを押して情報をクリアします。", en: "If you clear the information being managed by this app, it may be recoverable." });
+        messageBuilderState.setMessage(__filename, "Problem-sub1", { ja: "このアプリで管理している情報をクリアすると回復する場合があります。", en: "Clearing information managed by this app may resolve the problem." });
+        messageBuilderState.setMessage(__filename, "Problem-sub2", { ja: "下記のボタンを押して情報をクリアします。", en: "Click the button below to clear information." });
         messageBuilderState.setMessage(__filename, "Problem-action1", { ja: "アプリを初期化", en: "Initialize" });
         messageBuilderState.setMessage(__filename, "Problem-action2", { ja: "初期化せずリロード", en: "Reload without initialize" });
     }, []);

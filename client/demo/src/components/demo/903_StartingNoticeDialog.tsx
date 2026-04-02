@@ -26,7 +26,7 @@ export const StartingNoticeDialog = () => {
         });
         messageBuilderState.setMessage(__filename, "web_edditon_3", {
             ja: "次のgithubリポジトリから無料で取得できます。",
-            en: "",
+            en: "obtained for free from the github repository.",
         });
         messageBuilderState.setMessage(__filename, "github", { ja: "github", en: "github" });
 

@@ -13,7 +13,7 @@ const AppStateProviderWrapper = () => {
 
     if (!applicationSetting || !firstTouch) {
         const clearSetting = () => {
-            const result = window.confirm('設定を初期化します。');
+            const result = window.confirm('Settings will be reset.');
             if (result) {
                 applicationSetting.clearSetting()
                 location.reload()
@@ -23,13 +23,13 @@ const AppStateProviderWrapper = () => {
             <div className="front-container">
                 <div className="front-title">Corpus Voice Recorder</div>
                 <div className="front-description">
-                    <p>このアプリは音声合成のためのレコーディングアプリです。</p>
-                    <p>完全にクライアント上で動きます。サーバへのデータアップロードは行いません。データはブラウザ内に蓄積されます。</p>
+                    <p>This is a voice recording app for speech synthesis.</p>
+                    <p>Fully client-side. No data upload to servers. Data stored locally in browser.</p>
                     <p>
-                        ソースコード、使用方法は
-                        <a href="https://github.com/w-okada/voice-changer" target="_blank" rel="noopener noreferrer">こちら。</a>
+                        Source code and instructions are available 
+                        <a href="https://github.com/w-okada/voice-changer" target="_blank" rel="noopener noreferrer"> here.</a>
                     </p>
-                    <p className="front-description-strong">使ってみてコーヒーくらいならごちそうしてもいいかなという人はこちらからご支援お願いします。 </p>
+                    <p className="front-description-strong">If you feel like buying me a coffee, support me here: </p>
                     <p>
                         <a href="https://www.buymeacoffee.com/wokad">
                             <img className="front-description-img" src="./coffee.png"></img>
@@ -45,27 +45,28 @@ const AppStateProviderWrapper = () => {
                 >
                     Click to start
                 </div>
-                <div className="front-note">確認動作環境:Windows 11 + Chrome</div>
+                <div className="front-note">Tested on: Windows 11 + Chrome</div>
                 <div className="front-description">
-                    <p>現在ITAコーパスのemotionとrecitationの台本が登録されています。</p>
+                    <p>Currently registered with ITA corpus emotion and recitation scripts.</p>
                     <p>
+                        Designed for use with 
                         <a href="https://github.com/isletennos/MMVC_Trainer" target="_blank">
                             MMVC
                         </a>
-                        での使用を想定しているため、48000Hz, 16bitの録音設定になっています。
+                        , so recording is set to 48000Hz, 16bit.
                     </p>
                     <p>
-                        (エクスポート時に内部で24000Hzに変換します。)
+                        (Internally converted to 24000Hz during export.)
                     </p>
 
                 </div>
 
 
                 {/* <div className="front-attention">
-                    <p>動作確認のため、少量の利用から始めて、こまめなExportをお願いします。</p>
-                    <p>ブラウザでデータ削除を行うとデータ消えるので注意してください。</p>
+                    <p>Please start with a small amount of use and export frequently for operation confirmation.</p>
+                    <p>Data will be lost if you clear your browser data.</p>
                 </div> */}
-                <div className="front-disclaimer">免責：本ソフトウェアの使用または使用不能により生じたいかなる直接損害・間接損害・波及的損害・結果的損害 または特別損害についても、一切責任を負いません。</div>
+                <div className="front-disclaimer">Disclaimer: We are not responsible for any direct, indirect, consequential, or special damages arising from the use or inability to use this software.</div>
 
 
                 <div className="front-clear-setting" onClick={clearSetting}>
