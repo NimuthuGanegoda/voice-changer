@@ -114,6 +114,9 @@ def getSampleJsonAndModelIds(mode: RVCSampleMode):
         ], [
             ("Mari", {"useIndex": True}),
             ("MoriCalliope", {"useIndex": True}),
+            ("GawrGura", {"useIndex": True}),
+            ("HoushouMarine", {"useIndex": True}),
+            ("UsadaPekora", {"useIndex": True}),
             ("Tsukuyomi-chan_o", {"useIndex": False}),
             ("Amitaro_o", {"useIndex": False}),
             ("KikotoMahiro_o", {"useIndex": False}),
