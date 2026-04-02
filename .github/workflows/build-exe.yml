@@ -1,0 +1,43 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies (CPU-only for < 1GB)
+      run: |
+        python -m pip install --upgrade pip
+        # Install CPU versions specifically to save space
+        pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install onnxruntime
+        # Install other requirements
+        pip install -r server/requirements.txt
+        # Remove the GPU-specific onnxruntime from requirements if it was installed
+        pip uninstall -y onnxruntime-gpu
+        pip install pyinstaller
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --clean VoiceChanger.spec
+
+    - name: Create Release and Upload Asset
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: dist/VoiceChanger.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
