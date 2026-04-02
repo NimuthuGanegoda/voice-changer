@@ -107,10 +107,13 @@ RVCSampleMode: TypeAlias = Literal[
 def getSampleJsonAndModelIds(mode: RVCSampleMode):
     if mode == "production":
         return [
+            "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/samples.json",
             "https://huggingface.co/wok000/vcclient_model/raw/main/samples_0004_t.json",
             "https://huggingface.co/wok000/vcclient_model/raw/main/samples_0004_o.json",
             "https://huggingface.co/wok000/vcclient_model/raw/main/samples_0004_d.json",
         ], [
+            ("Mari", {"useIndex": True}),
+            ("MoriCalliope", {"useIndex": True}),
             ("Tsukuyomi-chan_o", {"useIndex": False}),
             ("Amitaro_o", {"useIndex": False}),
             ("KikotoMahiro_o", {"useIndex": False}),

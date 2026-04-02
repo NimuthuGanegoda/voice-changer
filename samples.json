@@ -1,0 +1,36 @@
+{
+  "RVC": [
+    {
+      "id": "Mari",
+      "voiceChangerType": "RVC",
+      "lang": "en-US",
+      "tag": ["v2", "torch"],
+      "name": "Mari",
+      "modelUrl": "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/weights/mari.pth",
+      "indexUrl": "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/weights/mari.index",
+      "termsOfUseUrl": "",
+      "icon": "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/icons/mari.png",
+      "credit": "",
+      "description": "Mari voice model",
+      "sampleRate": 40000,
+      "modelType": "rvc_v2",
+      "f0": true
+    },
+    {
+      "id": "MoriCalliope",
+      "voiceChangerType": "RVC",
+      "lang": "en-US",
+      "tag": ["v2", "torch"],
+      "name": "Mori Calliope",
+      "modelUrl": "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/weights/mori.pth",
+      "indexUrl": "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/weights/mori.index",
+      "termsOfUseUrl": "",
+      "icon": "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/master/icons/mori.png",
+      "credit": "",
+      "description": "Mori Calliope voice model",
+      "sampleRate": 40000,
+      "modelType": "rvc_v2",
+      "f0": true
+    }
+  ]
+}
