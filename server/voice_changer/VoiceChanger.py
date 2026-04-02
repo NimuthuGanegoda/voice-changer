@@ -356,8 +356,12 @@ def print_convert_processing(mess: str):
 
 def pad_array(arr: AudioInOut, target_length: int):
     current_length = arr.shape[0]
-    if current_length >= target_length:
+    if current_length == target_length:
         return arr
+    elif current_length > target_length:
+        cut_width = current_length - target_length
+        cut_left = cut_width // 2
+        return arr[cut_left : cut_left + target_length]
     else:
         pad_width = target_length - current_length
         pad_left = pad_width // 2

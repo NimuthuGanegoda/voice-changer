@@ -9,9 +9,9 @@ import "./100_components/001_css/001_App.css";
 
 const AppStateProviderWrapper = () => {
     const { applicationSetting, deviceManagerState } = useAppSetting();
-    const [firstTach, setFirstTouch] = React.useState<boolean>(false);
+    const [firstTouch, setFirstTouch] = React.useState<boolean>(false);
 
-    if (!applicationSetting || !firstTach) {
+    if (!applicationSetting || !firstTouch) {
         const clearSetting = () => {
             const result = window.confirm('設定を初期化します。');
             if (result) {

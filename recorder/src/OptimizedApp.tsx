@@ -18,11 +18,20 @@ const LoadingSpinner = () => (
     </div>
 );
 
-const MyFallbackComponent = () => {
-    console.log("FALLBACK");
+const MyFallbackComponent = ({ error, resetErrorBoundary }: { error: Error, resetErrorBoundary: () => void }) => {
+    console.log("FALLBACK", error);
     return (
-        <div role="alert">
-            <p>Something went wrong: clearing settings and reloading...</p>
+        <div role="alert" style={{ padding: '20px', textAlign: 'center' }}>
+            <p>Something went wrong.</p>
+            <button 
+                onClick={() => {
+                    resetErrorBoundary();
+                    location.reload();
+                }}
+                style={{ marginTop: '10px', padding: '5px 10px', cursor: 'pointer' }}
+            >
+                Clear Settings and Reload
+            </button>
         </div>
     );
 };
