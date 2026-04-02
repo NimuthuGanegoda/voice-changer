@@ -1,3 +1,4 @@
+import os
 import torch
 import onnxruntime
 
@@ -36,19 +37,23 @@ class DeviceManager(object):
     def getOnnxExecutionProvider(self, gpu: int):
         availableProviders = onnxruntime.get_available_providers()
         devNum = torch.cuda.device_count()
+        
+        # Optimize threads for low-end / potato PCs (avoid thrashing)
+        cpu_threads = max(1, min(4, os.cpu_count() // 2)) if os.cpu_count() else 2
+
         if gpu == 65536 and "OpenVINOExecutionProvider" in availableProviders:
             return ["OpenVINOExecutionProvider"], [{"device_type": "NPU"}]
 
         if gpu >= 0 and "CUDAExecutionProvider" in availableProviders and devNum > 0:
-            if gpu < devNum:  # ひとつ前のif文で弾いてもよいが、エラーの解像度を上げるため一段下げ。
+            if gpu < devNum:  # Check index here to improve error resolution
                 return ["CUDAExecutionProvider"], [{"device_id": gpu}]
             else:
                 print("[Voice Changer] device detection error, fallback to cpu")
                 return ["CPUExecutionProvider"], [
                     {
-                        "intra_op_num_threads": 8,
+                        "intra_op_num_threads": cpu_threads,
                         "execution_mode": onnxruntime.ExecutionMode.ORT_PARALLEL,
-                        "inter_op_num_threads": 8,
+                        "inter_op_num_threads": cpu_threads,
                     }
                 ]
         elif gpu >= 0 and "DmlExecutionProvider" in availableProviders:
@@ -56,9 +61,9 @@ class DeviceManager(object):
         else:
             return ["CPUExecutionProvider"], [
                 {
-                    "intra_op_num_threads": 8,
+                    "intra_op_num_threads": cpu_threads,
                     "execution_mode": onnxruntime.ExecutionMode.ORT_PARALLEL,
-                    "inter_op_num_threads": 8,
+                    "inter_op_num_threads": cpu_threads,
                 }
             ]
 
@@ -74,7 +79,7 @@ class DeviceManager(object):
             return False
 
         cap = torch.cuda.get_device_capability(id)
-        if cap[0] < 7:  # コンピューティング機能が7以上の場合half precisionが使えるとされている（が例外がある？T500とか）
+        if cap[0] < 7:  # Half precision generally requires compute capability 7 or higher (with some exceptions like T500)
             return False
 
         return True
@@ -83,6 +88,5 @@ class DeviceManager(object):
         try:
             return torch.cuda.get_device_properties(id).total_memory
         except Exception as e:
-            # except:
             print(e)
             return 0
