@@ -52,6 +52,7 @@
         "amazon-chime-sdk-js": "^3.20.0",
         "buffer": "^6.0.3",
         "localforage": "^1.10.0",
+        "onnxruntime-web": "^1.26.0",
         "protobufjs": "^7.2.6",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
