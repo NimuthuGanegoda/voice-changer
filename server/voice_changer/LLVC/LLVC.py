@@ -184,7 +184,12 @@ class LLVC(VoiceChangerModel):
             raise RuntimeError(e)
 
     def getPipelineInfo(self):
-        return {"TODO": "LLVC get info"}
+        return {
+            "type": self.voiceChangerType,
+            "samplingRate": self.processingSampleRate,
+            "model": self.slotInfo.modelFile,
+            "config": self.slotInfo.configFile,
+        }
 
     def get_info(self):
         data = asdict(self.settings)

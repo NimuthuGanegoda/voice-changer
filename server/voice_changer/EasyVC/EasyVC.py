@@ -167,7 +167,8 @@ class EasyVC(VoiceChangerModel):
         cropEnd = -1 * (crossfadeSize)
         crop = self.audio_buffer[cropOffset:cropEnd]
         vol = np.sqrt(np.square(crop).mean())
-        vol = max(vol, self.prevVol * 0.0)
+        # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping
+        vol = max(vol, self.prevVol * 0.9)
         self.prevVol = vol
 
         return (
