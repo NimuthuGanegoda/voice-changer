@@ -362,14 +362,25 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         return self.get_info()
 
     def changeVoice(self, receivedData: AudioInOut):
+        # Mix soundboard audio
+        sb_chunk = self.soundboard.get_chunk(receivedData.shape[0])
+        receivedDataFloat = receivedData.astype(np.float32) / 32768.0
+        mixedDataFloat = receivedDataFloat + sb_chunk
+        mixedData = (np.clip(mixedDataFloat, -1.0, 1.0) * 32767.5).astype(np.int16)
+
         if self.settings.passThrough is True:  # パススルー
-            return receivedData, []
+            return mixedData, []
 
         if hasattr(self, "voiceChanger") is True:
-            return self.voiceChanger.on_request(receivedData)
+            return self.voiceChanger.on_request(mixedData)
         else:
             logger.info("Voice Change is not loaded. Did you load a correct model?")
-            return np.zeros(1).astype(np.int16), []
+            return mixedData, []
+
+    def play_sound(self, filename: str):
+        path = os.path.join("data", "soundboard", filename)
+        logger.info(f"[Voice Changer] Playing sound: {path}")
+        return self.soundboard.add_sound(path)
 
     def export2onnx(self):
         return self.voiceChanger.export2onnx()

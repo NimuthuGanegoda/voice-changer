@@ -17,13 +17,46 @@ class VoiceModel(BaseModel):
     buffer: str
 
 
+class SoundRequest(BaseModel):
+    filename: str
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "en-US-EmmaNeural"
+
+
 class MMVC_Rest_VoiceChanger:
     def __init__(self, voiceChangerManager: VoiceChangerManager):
         self.voiceChangerManager = voiceChangerManager
         self.router = APIRouter()
         self.router.add_api_route("/test", self.test, methods=["POST"])
+        self.router.add_api_route("/play_sound", self.play_sound, methods=["POST"])
+        self.router.add_api_route("/tts", self.tts, methods=["POST"])
 
         self.tlock = threading.Lock()
+
+    async def play_sound(self, request: SoundRequest):
+        res = self.voiceChangerManager.play_sound(request.filename)
+        return {"status": "OK" if res else "Error"}
+
+    async def tts(self, request: TTSRequest):
+        try:
+            import edge_tts
+            import tempfile
+            import os
+
+            communicate = edge_tts.Communicate(request.text, request.voice)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                await communicate.save(tmp.name)
+                self.voiceChangerManager.soundboard.add_sound(tmp.name)
+                os.unlink(tmp.name)
+
+            return {"status": "OK"}
+        except ImportError:
+            return {"status": "Error", "message": "edge-tts not installed"}
+        except Exception as e:
+            return {"status": "Error", "message": str(e)}
 
     def test(self, voice: VoiceModel):
         try:
