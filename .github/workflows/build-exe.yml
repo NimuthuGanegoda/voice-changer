@@ -26,9 +26,14 @@ jobs:
       - name: Build EXE
         run: |
           pyinstaller VoiceChanger.spec --noconfirm
+
+      - name: Compress Release Folder
+        run: Compress-Archive -Path dist/VoiceChanger -DestinationPath dist/VoiceChanger.zip
+        shell: pwsh
           
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/VoiceChanger.exe
+          files: |
+            dist/VoiceChanger.zip
