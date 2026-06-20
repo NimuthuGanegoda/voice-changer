@@ -9,31 +9,34 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          
-      - name: Install Dependencies
+
+      - name: Build Frontend
+        run: |
+          cd client/demo
+          npm install
+          npx webpack --config webpack.prod.js
+
+      - name: Install Server Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r server/requirements.txt
           pip install pyinstaller
-          
+
       - name: Build EXE
         run: |
           pyinstaller VoiceChanger.spec --noconfirm
 
-      - name: Compress Release Folder
-        run: Compress-Archive -Path dist/VoiceChanger -DestinationPath dist/VoiceChanger.zip
-        shell: pwsh
-          
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            dist/VoiceChanger.zip
+          files: dist/VoiceChanger.exe
