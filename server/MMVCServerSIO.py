@@ -1,6 +1,5 @@
 import sys
 
-from distutils.util import strtobool
 from datetime import datetime
 import socket
 import platform
@@ -27,6 +26,15 @@ import subprocess
 import multiprocessing as mp
 
 from mods.log_control import VoiceChangaerLogger
+
+
+def strtobool(val: str) -> bool:
+    val = val.lower()
+    if val in ("y", "yes", "t", "true", "on", "1"):
+        return True
+    if val in ("n", "no", "f", "false", "off", "0"):
+        return False
+    raise ValueError(f"invalid truth value {val!r}")
 
 
 if __name__ == "__main__":

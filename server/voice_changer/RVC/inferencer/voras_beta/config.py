@@ -51,8 +51,8 @@ class TrainConfig(BaseModel):
 class DatasetMetaItem(BaseModel):
     gt_wav: str
     co256: str
-    f0: Optional[str]
-    f0nsf: Optional[str]
+    f0: Optional[str] = None
+    f0nsf: Optional[str] = None
     speaker_id: int
 
 

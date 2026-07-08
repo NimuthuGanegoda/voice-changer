@@ -1,17 +1,30 @@
 import torch
 from torch import device
 from voice_changer.RVC.embedder.Embedder import Embedder
-from fairseq import checkpoint_utils
 
 
 class FairseqHubert(Embedder):
     def loadModel(self, file: str, dev: device, isHalf: bool = True) -> Embedder:
+        # Deferred: fairseq is an unmaintained, optional dependency (only needed for
+        # this non-ONNX fallback embedder) that doesn't import on Python 3.11+, so it
+        # must not break module import for callers who only use the ONNX embedder path.
+        from fairseq import checkpoint_utils
+
         super().setProps("hubert_base", file, dev, isHalf)
 
-        models, saved_cfg, task = checkpoint_utils.load_model_ensemble_and_task(
-            [file],
-            suffix="",
-        )
+        # PyTorch 2.6 flipped torch.load's default to weights_only=True; fairseq's
+        # checkpoint pickles a fairseq.data.dictionary.Dictionary object, which that
+        # mode rejects. These are our own pinned download URLs (WeightDownloader.py),
+        # not user-supplied files, so falling back to a full unpickle here is safe.
+        _original_torch_load = torch.load
+        try:
+            torch.load = lambda *a, **kw: _original_torch_load(*a, **{**kw, "weights_only": False})
+            models, saved_cfg, task = checkpoint_utils.load_model_ensemble_and_task(
+                [file],
+                suffix="",
+            )
+        finally:
+            torch.load = _original_torch_load
         model = models[0]
         model.eval()
 
