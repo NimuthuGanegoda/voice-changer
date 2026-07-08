@@ -48,6 +48,40 @@
 - [Real-time Voice Changer VCClient](https://github.com/w-okada/voice-changer)
 - [Text-to-Speech Software TTSClient](https://github.com/w-okada/ttsclient)
 - [Real-Time Speech Recognition Software ASRClient](https://github.com/w-okada/asrclient)
+
+## Low-spec / older hardware preset
+
+This fork targets older machines. For lag-free conversion on weak hardware, use these settings in the GUI:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| CHUNK | 192–256 | Smaller blocks reduce latency; go up if you hear crackling |
+| EXTRA | 2048 | Halves per-chunk compute vs the 4096 default with minor quality cost |
+| F0 Det. | `rmvpe_onnx` (or `fcpe`) | Fastest accurate pitch extractors |
+| GPU | your GPU if listed, else `-1` (CPU) | DirectML covers AMD/Intel/NVIDIA on Windows; CUDA used automatically on NVIDIA |
+| SilenceFront | on | Skips computing on lookahead silence |
+| Model | ONNX (export via "Export ONNX" or upload .onnx) | ONNX runtime is much faster than PyTorch on CPU and DirectML |
+
+Notes:
+- On Windows the server ships with ONNX Runtime **DirectML**, which accelerates any DX12-capable GPU (old NVIDIA GTX cards, AMD, Intel iGPUs) with automatic CPU fallback.
+- On Linux with an NVIDIA GPU, `onnxruntime-gpu` (CUDA) is installed; CPU-only Linux machines fall back to the CPU provider automatically.
+- fp16 is automatically disabled on GPUs that run it slowly (GTX 10xx/16xx, P40) — this is intentional and faster.
+
+## Using VCClient as a virtual microphone
+
+**Browser apps (Discord web, Google Meet, etc.) — no driver needed:**
+1. Load the `extension/` folder via `chrome://extensions` → "Load unpacked" (Developer mode on).
+2. Start the VCClient server and load a model.
+3. Click the extension icon on the tab → "Enable virtual mic on this tab".
+4. In the site's audio settings, re-select the microphone (pick **VCClient Virtual Mic**). The site now receives your converted voice.
+
+**Desktop apps (Discord app, games) — one-time VB-Cable install:**
+1. Install the free [VB-Cable](https://vb-audio.com/Cable/) driver and reboot.
+2. VCClient auto-detects it (`GET /device_setup/status`). In server device mode, set the output device to **CABLE Input**.
+3. In your app, select **CABLE Output** as the microphone.
+
+On Linux no driver is needed: `pactl load-module module-null-sink sink_name=vcclient sink_properties=device.description=VCClient` creates a virtual mic (`vcclient.monitor`), then point VCClient output at it.
+
 # usage
 
 This is an app for performing voice changes with MMVC and so-vits-svc.

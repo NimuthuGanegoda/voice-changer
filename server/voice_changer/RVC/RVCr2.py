@@ -52,6 +52,7 @@ class RVCr2(VoiceChangerModel):
         self.pitchf_buffer: PitchfInOut | None = None
         self.feature_buffer: FeatureInOut | None = None
         self.prevVol = 0.0
+        self.rawVol = 0.0
         self.slotInfo = slotInfo
         # self.initialize()
 
@@ -166,9 +167,12 @@ class RVCr2(VoiceChangerModel):
         cropOffset = -1 * (inputSize + crossfadeSize)
         cropEnd = -1 * (crossfadeSize)
         crop = self.audio_buffer[cropOffset:cropEnd]
-        vol = np.sqrt(np.square(crop).mean())
-        # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping
-        vol = max(vol, self.prevVol * 0.9)
+        rawVol = np.sqrt(np.square(crop).mean())
+        # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping.
+        # rawVol is kept separately so the silence skip still triggers (the decayed value
+        # would stay above silentThreshold for minutes and waste inference on silence).
+        self.rawVol = rawVol
+        vol = max(rawVol, self.prevVol * 0.9)
         self.prevVol = vol
 
         return (
@@ -209,7 +213,7 @@ class RVCr2(VoiceChangerModel):
         vol = data[4]
         outSize = data[5]
 
-        if vol < self.settings.silentThreshold:
+        if self.rawVol < self.settings.silentThreshold:
             return np.zeros(convertSize).astype(np.int16) * np.sqrt(vol)
 
         device = self.pipeline.device

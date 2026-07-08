@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: system-ui, sans-serif; width: 280px; margin: 12px; }
+    h1 { font-size: 14px; margin: 0 0 10px; }
+    label { display: block; margin: 8px 0; font-size: 12px; }
+    input[type="text"] { width: 100%; box-sizing: border-box; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    #status { font-size: 11px; color: #555; margin-top: 10px; white-space: pre-line; }
+    .hint { font-size: 11px; color: #777; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>VCClient Virtual Mic</h1>
+  <label class="row">
+    <input type="checkbox" id="enabled" />
+    Enable virtual mic on this tab
+  </label>
+  <label>
+    VCClient server URL
+    <input type="text" id="serverUrl" placeholder="http://127.0.0.1:18888" />
+  </label>
+  <div id="status">...</div>
+  <div class="hint">
+    After enabling, re-select the microphone in the site's audio settings
+    (pick "VCClient Virtual Mic" or just re-open the mic).
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

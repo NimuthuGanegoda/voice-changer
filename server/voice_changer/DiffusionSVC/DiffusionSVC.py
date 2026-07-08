@@ -49,6 +49,7 @@ class DiffusionSVC(VoiceChangerModel):
         self.pitchf_buffer: PitchfInOut | None = None
         self.feature_buffer: FeatureInOut | None = None
         self.prevVol = 0.0
+        self.rawVol = 0.0
         self.slotInfo = slotInfo
 
         self.modelSlotManager = ModelSlotManager.get_instance(self.params.model_dir)
@@ -193,9 +194,11 @@ class DiffusionSVC(VoiceChangerModel):
         cropOffset = -1 * (newData.shape[0] + crossfadeSize)
         cropEnd = -1 * (crossfadeSize)
         crop = self.audio_buffer[cropOffset:cropEnd]
-        vol = np.sqrt(np.square(crop).mean())
-        # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping
-        vol = float(max(vol, self.prevVol * 0.9))
+        rawVol = float(np.sqrt(np.square(crop).mean()))
+        # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping.
+        # rawVol is kept separately so the silence skip still triggers on real silence.
+        self.rawVol = rawVol
+        vol = float(max(rawVol, self.prevVol * 0.9))
         self.prevVol = vol
 
         return (
@@ -219,7 +222,7 @@ class DiffusionSVC(VoiceChangerModel):
         convertSize: int = data[3]
         vol: float = data[4]
 
-        if vol < self.settings.silentThreshold:
+        if self.rawVol < self.settings.silentThreshold:
             return np.zeros(convertSize).astype(np.int16) * np.sqrt(vol)
 
         if self.pipeline is None:

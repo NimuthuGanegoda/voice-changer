@@ -1,5 +1,19 @@
+import os
+
 import torch
 import onnxruntime
+
+
+def _cpuProviderOptions():
+    # Sequential executor with intra-op threads sized to the machine is the
+    # low-latency configuration; 8+8 parallel threads oversubscribe small CPUs.
+    return [
+        {
+            "intra_op_num_threads": max(1, (os.cpu_count() or 4) - 1),
+            "execution_mode": onnxruntime.ExecutionMode.ORT_SEQUENTIAL,
+            "inter_op_num_threads": 1,
+        }
+    ]
 
 
 class DeviceManager(object):
@@ -41,23 +55,11 @@ class DeviceManager(object):
                 return ["CUDAExecutionProvider"], [{"device_id": gpu}]
             else:
                 print("[Voice Changer] device detection error, fallback to cpu")
-                return ["CPUExecutionProvider"], [
-                    {
-                        "intra_op_num_threads": 8,
-                        "execution_mode": onnxruntime.ExecutionMode.ORT_PARALLEL,
-                        "inter_op_num_threads": 8,
-                    }
-                ]
+                return ["CPUExecutionProvider"], _cpuProviderOptions()
         elif gpu >= 0 and "DmlExecutionProvider" in availableProviders:
             return ["DmlExecutionProvider"], [{"device_id": gpu}]
         else:
-            return ["CPUExecutionProvider"], [
-                {
-                    "intra_op_num_threads": 8,
-                    "execution_mode": onnxruntime.ExecutionMode.ORT_PARALLEL,
-                    "inter_op_num_threads": 8,
-                }
-            ]
+            return ["CPUExecutionProvider"], _cpuProviderOptions()
 
     def setForceTensor(self, forceTensor: bool):
         self.forceTensor = forceTensor

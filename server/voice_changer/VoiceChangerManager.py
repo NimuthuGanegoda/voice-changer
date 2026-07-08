@@ -13,6 +13,7 @@ from voice_changer.VoiceChanger import VoiceChanger
 from const import STORED_SETTING_FILE, UPLOAD_DIR, StaticSlot
 from voice_changer.VoiceChangerV2 import VoiceChangerV2
 from voice_changer.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
+from voice_changer.utils.Soundboard import Soundboard
 from voice_changer.utils.ModelMerger import MergeElement, ModelMergerRequest
 from voice_changer.utils.VoiceChangerModel import AudioInOut
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
@@ -78,6 +79,8 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         self.settings: VoiceChangerManagerSettings = VoiceChangerManagerSettings()
 
         self.modelSlotManager = ModelSlotManager.get_instance(self.params.model_dir)
+        self.soundboard = Soundboard()
+        os.makedirs(os.path.join("data", "soundboard"), exist_ok=True)
         # スタティックな情報を収集
         self.gpus: list[GPUInfo] = self._get_gpuInfos()
 
@@ -362,22 +365,29 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         return self.get_info()
 
     def changeVoice(self, receivedData: AudioInOut):
-        # Mix soundboard audio
-        sb_chunk = self.soundboard.get_chunk(receivedData.shape[0])
-        receivedDataFloat = receivedData.astype(np.float32) / 32768.0
-        mixedDataFloat = receivedDataFloat + sb_chunk
-        mixedData = (np.clip(mixedDataFloat, -1.0, 1.0) * 32767.5).astype(np.int16)
+        # Mix soundboard audio (skip the float round-trip entirely when nothing is queued)
+        if self.soundboard.is_active():
+            if self.voiceChanger is not None:
+                inputSampleRate = getattr(self.voiceChanger.settings, "inputSampleRate", 48000)
+                self.soundboard.set_sampling_rate(inputSampleRate)
+            sb_chunk = self.soundboard.get_chunk(receivedData.shape[0])
+            receivedDataFloat = receivedData.astype(np.float32) / 32768.0
+            mixedDataFloat = receivedDataFloat + sb_chunk
+            mixedData = (np.clip(mixedDataFloat, -1.0, 1.0) * 32767.0).astype(np.int16)
+        else:
+            mixedData = receivedData
 
         if self.settings.passThrough is True:  # パススルー
             return mixedData, []
 
-        if hasattr(self, "voiceChanger") is True:
+        if self.voiceChanger is not None:
             return self.voiceChanger.on_request(mixedData)
         else:
             logger.info("Voice Change is not loaded. Did you load a correct model?")
             return mixedData, []
 
     def play_sound(self, filename: str):
+        filename = os.path.basename(filename)  # reject path traversal
         path = os.path.join("data", "soundboard", filename)
         logger.info(f"[Voice Changer] Playing sound: {path}")
         return self.soundboard.add_sound(path)

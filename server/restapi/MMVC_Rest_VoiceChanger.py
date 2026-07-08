@@ -33,8 +33,31 @@ class MMVC_Rest_VoiceChanger:
         self.router.add_api_route("/test", self.test, methods=["POST"])
         self.router.add_api_route("/play_sound", self.play_sound, methods=["POST"])
         self.router.add_api_route("/tts", self.tts, methods=["POST"])
+        self.router.add_api_route("/device_setup/status", self.device_setup_status, methods=["GET"])
 
         self.tlock = threading.Lock()
+
+    async def device_setup_status(self):
+        """Detect a system-wide virtual audio cable (VB-Cable). If present the user can
+        route VCClient output into it and pick it as the mic in desktop apps."""
+        try:
+            from voice_changer.Local.AudioDeviceList import list_audio_device
+
+            audioinput, audiooutput = list_audio_device()
+            cableOutputDevices = [{"index": d.index, "name": d.name} for d in audiooutput if "CABLE Input" in d.name]
+            cableInputDevices = [{"index": d.index, "name": d.name} for d in audioinput if "CABLE Output" in d.name]
+            installed = len(cableOutputDevices) > 0
+            return {
+                "status": "OK",
+                "virtualCableInstalled": installed,
+                # VCClient should output INTO "CABLE Input"; apps record FROM "CABLE Output".
+                "cablePlaybackDevices": cableOutputDevices,
+                "cableRecordingDevices": cableInputDevices,
+                "installUrl": None if installed else "https://vb-audio.com/Cable/",
+                "hint": None if installed else "Install VB-Cable, restart VCClient, then set server output to 'CABLE Input' and select 'CABLE Output' as microphone in your app.",
+            }
+        except Exception as e:
+            return {"status": "Error", "message": str(e)}
 
     async def play_sound(self, request: SoundRequest):
         res = self.voiceChangerManager.play_sound(request.filename)
@@ -46,13 +69,20 @@ class MMVC_Rest_VoiceChanger:
             import tempfile
             import os
 
-            communicate = edge_tts.Communicate(request.text, request.voice)
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                await communicate.save(tmp.name)
-                self.voiceChangerManager.soundboard.add_sound(tmp.name)
-                os.unlink(tmp.name)
+            # edge-tts outputs MP3. Close the fd before writing: on Windows an open
+            # handle would block edge-tts from opening the same path.
+            fd, path = tempfile.mkstemp(suffix=".mp3")
+            os.close(fd)
+            try:
+                communicate = edge_tts.Communicate(request.text, request.voice)
+                await communicate.save(path)
+                ok = self.voiceChangerManager.soundboard.add_sound(path)
+            finally:
+                os.unlink(path)
 
-            return {"status": "OK"}
+            if ok:
+                return {"status": "OK"}
+            return {"status": "Error", "message": "failed to decode TTS audio (mp3 decoder unavailable?)"}
         except ImportError:
             return {"status": "Error", "message": "edge-tts not installed"}
         except Exception as e:

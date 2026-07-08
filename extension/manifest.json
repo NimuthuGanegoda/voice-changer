@@ -1,13 +1,29 @@
 {
   "manifest_version": 3,
-  "name": "VCClient: Sovereign Extension",
-  "version": "1.0.0",
-  "description": "Real-time AI Voice Conversion Extension for the Sanctuary of Eternity.",
-  "permissions": ["tabCapture", "storage", "activeTab"],
+  "name": "VCClient Virtual Mic",
+  "version": "2.0.0",
+  "description": "Turns VCClient real-time voice conversion into a virtual microphone for browser apps (Discord, Meet, ...). No driver needed.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "action": {
     "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-main.js"],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["vendor/socket.io.min.js", "content-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
 }

@@ -1,9 +1,10 @@
 from dataclasses import dataclass, asdict
+import threading
 
 import numpy as np
 from const import SERVER_DEVICE_SAMPLE_RATES
 
-from queue import Queue
+from queue import Empty, Queue
 from mods.log_control import VoiceChangaerLogger
 
 from voice_changer.Local.AudioDeviceList import checkSamplingRate, list_audio_device
@@ -99,9 +100,16 @@ class ServerDevice:
         self.mon_wav = None
         self.serverAudioInputDevices = None
         self.serverAudioOutputDevices = None
+        self.inQueue = Queue()
         self.outQueue = Queue()
         self.monQueue = Queue()
         self.performance = []
+
+        # Inference runs on this worker so the sounddevice callbacks never block on the
+        # model; on slow hardware an overrun then drops a block instead of glitching the
+        # whole stream.
+        self.inferenceThread = threading.Thread(target=self._inferenceWorker, daemon=True)
+        self.inferenceThread.start()
 
         # setting change確認用
         self.currentServerInputDeviceId = -1
@@ -147,61 +155,75 @@ class ServerDevice:
         self.performance = [round(x * 1000) for x in self.performance]
         return out_wav
 
+    @staticmethod
+    def _putBounded(queue: Queue, item):
+        # Keep queues shallow: catching up on a backlog only adds latency.
+        try:
+            while queue.qsize() > 2:
+                queue.get_nowait()
+        except Empty:
+            pass
+        queue.put(item)
+
+    @staticmethod
+    def _getLatest(queue: Queue):
+        item = None
+        try:
+            while True:
+                item = queue.get_nowait()
+        except Empty:
+            pass
+        return item
+
+    def _writeOutput(self, outdata: np.ndarray, out_wav, gain: float):
+        if out_wav is None or len(out_wav) != outdata.shape[0]:
+            outdata[:] = 0.0
+            return
+        outputChannels = outdata.shape[1]
+        outdata[:] = np.repeat(out_wav, outputChannels).reshape(-1, outputChannels) / 32768.0
+        outdata[:] = outdata * gain
+
+    def _inferenceWorker(self):
+        while True:
+            indata = self.inQueue.get()
+            try:
+                out_wav = self._processDataWithTime(indata)
+                self._putBounded(self.outQueue, out_wav)
+                self._putBounded(self.monQueue, out_wav)
+            except Exception as e:
+                print("[Voice Changer][ServerDevice][inferenceWorker] ex:", e)
+
     def audio_callback_outQueue(self, indata: np.ndarray, outdata: np.ndarray, frames, times, status):
         try:
-            out_wav = self._processDataWithTime(indata)
-
-            self.outQueue.put(out_wav)
-            outputChannels = outdata.shape[1]  # Monitorへのアウトプット
-            outdata[:] = np.repeat(out_wav, outputChannels).reshape(-1, outputChannels) / 32768.0
-            outdata[:] = outdata * self.settings.serverMonitorAudioGain
+            self._putBounded(self.inQueue, indata.copy())
+            # Monitorへのアウトプット
+            self._writeOutput(outdata, self._getLatest(self.monQueue), self.settings.serverMonitorAudioGain)
         except Exception as e:
             print("[Voice Changer] ex:", e)
 
     def audioInput_callback_outQueue(self, indata: np.ndarray, frames, times, status):
         try:
-            out_wav = self._processDataWithTime(indata)
-            self.outQueue.put(out_wav)
+            self._putBounded(self.inQueue, indata.copy())
         except Exception as e:
             print("[Voice Changer][ServerDevice][audioInput_callback] ex:", e)
-            # import traceback
-            # traceback.print_exc()
 
     def audioInput_callback_outQueue_monQueue(self, indata: np.ndarray, frames, times, status):
         try:
-            out_wav = self._processDataWithTime(indata)
-            self.outQueue.put(out_wav)
-            self.monQueue.put(out_wav)
+            self._putBounded(self.inQueue, indata.copy())
         except Exception as e:
             print("[Voice Changer][ServerDevice][audioInput_callback] ex:", e)
-            # import traceback
-            # traceback.print_exc()
 
     def audioOutput_callback(self, outdata: np.ndarray, frames, times, status):
         try:
-            out_wav = self.outQueue.get()
-            while self.outQueue.qsize() > 0:
-                self.outQueue.get()
-            outputChannels = outdata.shape[1]
-            outdata[:] = np.repeat(out_wav, outputChannels).reshape(-1, outputChannels) / 32768.0
-            outdata[:] = outdata * self.settings.serverOutputAudioGain
+            self._writeOutput(outdata, self._getLatest(self.outQueue), self.settings.serverOutputAudioGain)
         except Exception as e:
             print("[Voice Changer][ServerDevice][audioOutput_callback]  ex:", e)
-            # import traceback
-            # traceback.print_exc()
 
     def audioMonitor_callback(self, outdata: np.ndarray, frames, times, status):
         try:
-            mon_wav = self.monQueue.get()
-            while self.monQueue.qsize() > 0:
-                self.monQueue.get()
-            outputChannels = outdata.shape[1]
-            outdata[:] = np.repeat(mon_wav, outputChannels).reshape(-1, outputChannels) / 32768.0
-            outdata[:] = outdata * self.settings.serverMonitorAudioGain
+            self._writeOutput(outdata, self._getLatest(self.monQueue), self.settings.serverMonitorAudioGain)
         except Exception as e:
             print("[Voice Changer][ServerDevice][audioMonitor_callback]  ex:", e)
-            # import traceback
-            # traceback.print_exc()
 
     ###########################################
     # Main Loop Section
@@ -287,6 +309,11 @@ class ServerDevice:
             else:
                 sd._terminate()
                 sd._initialize()
+
+                # 前セッションの残留データを破棄
+                self._getLatest(self.inQueue)
+                self._getLatest(self.outQueue)
+                self._getLatest(self.monQueue)
 
                 # Curret Device ID
                 self.currentServerInputDeviceId = self.settings.serverInputDeviceId

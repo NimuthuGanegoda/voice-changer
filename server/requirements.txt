@@ -12,7 +12,12 @@ resampy==0.4.2
 python-socketio==5.8.0
 fastapi==0.95.1
 python-multipart==0.0.6
-onnxruntime-gpu==1.13.1
+# ONNX Runtime: DirectML build on Windows covers AMD/Intel/NVIDIA (DX12) GPUs plus CPU
+# in a single wheel. On Linux the CUDA build (falls back to CPU when no GPU); the CUDA 11.8
+# build (1.17.1) matches torch 2.0.1. macOS gets the CPU/CoreML build.
+onnxruntime-directml==1.17.3; sys_platform == 'win32'
+onnxruntime-gpu==1.17.1; sys_platform == 'linux'
+onnxruntime==1.17.3; sys_platform == 'darwin'
 scipy==1.10.1
 matplotlib==3.7.1
 websockets==11.0.2

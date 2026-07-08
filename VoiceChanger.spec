@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 
@@ -22,10 +22,14 @@ added_files = [
 added_files += collect_data_files('torch')
 added_files += collect_data_files('librosa')
 
+# onnxruntime's provider DLLs (DirectML.dll, onnxruntime_providers_*.dll) are not
+# always picked up by analysis; without them ONNX inference silently loses GPU support.
+added_binaries = collect_dynamic_libs('onnxruntime')
+
 a = Analysis(
     ['server/MMVCServerSIO.py'],
     pathex=[],
-    binaries=[],
+    binaries=added_binaries,
     datas=added_files,
     hiddenimports=[
         'engineio.async_drivers.eventlet',
@@ -61,7 +65,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,  # UPX corrupts torch/onnxruntime DLLs
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
