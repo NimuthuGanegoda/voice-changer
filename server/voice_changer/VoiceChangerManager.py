@@ -346,7 +346,7 @@ class VoiceChangerManager(ServerDeviceCallbacks):
                     newVal = int(val)
                     newVal = newVal % 1000
                 except:
-                    newVal = re.sub("^\d+", "", val)  # 先頭の数字を取り除く。
+                    newVal = re.sub(r"^\d+", "", val)  # 先頭の数字を取り除く。
                 logger.info(f"[Voice Changer] model slot is changed {self.settings.modelSlotIndex} -> {newVal}")
                 self.generateVoiceChanger(newVal)
                 # キャッシュ設定の反映

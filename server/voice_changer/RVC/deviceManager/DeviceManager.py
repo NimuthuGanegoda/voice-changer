@@ -59,7 +59,12 @@ class DeviceManager(object):
         elif gpu >= 0 and "DmlExecutionProvider" in availableProviders:
             return ["DmlExecutionProvider"], [{"device_id": gpu}]
         else:
-            return ["CPUExecutionProvider"], _cpuProviderOptions()
+            providers = []
+            for p in ["CoreMLExecutionProvider", "OpenVINOExecutionProvider", "QNNExecutionProvider"]:
+                if p in availableProviders:
+                    providers.append(p)
+            providers.append("CPUExecutionProvider")
+            return providers, _cpuProviderOptions()
 
     def setForceTensor(self, forceTensor: bool):
         self.forceTensor = forceTensor

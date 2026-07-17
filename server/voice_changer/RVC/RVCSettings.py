@@ -9,7 +9,7 @@ class RVCSettings:
     f0Detector: str = "rmvpe_onnx"  # dio or harvest
     tran: int = 12
     silentThreshold: float = 0.00001
-    extraConvertSize: int = 1024 * 4
+    extraConvertSize: int = 1024 * 2
 
     indexRatio: float = 0
     protect: float = 0.5
