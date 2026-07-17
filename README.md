@@ -1,174 +1,185 @@
-[日本語](/README.md) /
-[英語](/docs_i18n/README_en.md) /
-[韓国語](/docs_i18n/README_ko.md)/
-[中国語](/docs_i18n/README_zh.md)/
-[ドイツ語](/docs_i18n/README_de.md)/
-[アラビア語](/docs_i18n/README_ar.md)/
-[ギリシャ語](/docs_i18n/README_el.md)/
-[スペイン語](/docs_i18n/README_es.md)/
-[フランス語](/docs_i18n/README_fr.md)/
-[イタリア語](/docs_i18n/README_it.md)/
-[ラテン語](/docs_i18n/README_la.md)/
-[マレー語](/docs_i18n/README_ms.md)/
-[ロシア語](/docs_i18n/README_ru.md) \*日本語以外は機械翻訳です。
+## VC Client
 
-## VCClient
-
-VCClient は、AI を用いてリアルタイム音声変換を行うソフトウェアです。
+[Japanese](/README_ja.md) [Korean](/README_ko.md) [Russian](/README_ru.md)
 
 ## What's New!
-
-- v.2.2.2-beta
-  - リリースエディション： std_win, std_mac, std_lin_aarch64
-  - v.2.2.2-betaよりエディション毎のサポートモデルが変わります（下記参照）。また、バージョンごとにリリースされるエディションが異なる場合があります。
-  - Beatrice v2.0.0-rc0 をサポート。
-
-- v.2.1.3-alpha
-
-  - ショートカットキー
-  - バッファの可視化
-  - currently only for rvc
-
-- v.2.0.78-beta
-
-  - bugfix: RVC モデルのアップロードエラーを回避
-  - ver.1.x との同時起動ができるようになりました。
-  - 選択できる chunk size を増やしました。
-
-- v.2.0.77-beta (only for RTX 5090, experimental)
-  - 関連モジュールを 5090 対応 (開発者が RTX5090 未所持のため、動作未検証)
-- v.2.0.76-beta
+- We have released a sister product, the Text To Speech client.
+  - You can enjoy voice generation with a simple interface.
+  - For more details, click [here](https://github.com/w-okada/ttsclient).
+- Beatrice V2 Training Code Released!!!
+  - [Training Code Repository](https://huggingface.co/fierce-cats/beatrice-trainer)
+  - [Colab Version](https://github.com/w-okada/beatrice-trainer-colab)
+- v.2.0.70-beta (only for m1 mac)
+  - [HERE](https://github.com/w-okada/voice-changer/tree/v.2)
   - new feature:
-    - Beatrice: 話者マージの実装
-    - Beatrice: オートピッチシフト
+    - The M1 Mac version of VCClient now supports Beatrice v2 beta.1.
+- v.2.0.69-beta (only for win)
+  - [HERE](https://github.com/w-okada/voice-changer/tree/v.2)
   - bugfix:
-    - サーバモードのデバイス選択時の不具合対応
-- v.2.0.73-beta
-  - new feature:
-    - 編集した beatrice model のダウンロード
-  - bugfix:
-    - beatrice v2 の pitch, formant が反映されないバグを修正
-    - Applio の embedder を使用しているモデルの ONNX ができないバグを修正
+    - Fixed a bug where the start button would not be displayed in case of some exceptions
+    - Adjusted the output buffer for server device mode
+    - Fixed a bug where the sampling rate would change when settings were modified while using server device mode
+    - Fixed a bug when using Japanese hubert
+  - misc:
+    - Added host API filter (highlighted) for server device mode
+- v.2.0.65-beta
+  - [HERE](https://github.com/w-okada/voice-changer/tree/v.2)
+  - new feature: We have supported Beatrice v2 beta.1, enabling even higher quality voice conversion.
 
-## エディション
+# What is VC Client
 
-v2.2.1 以降は、エディションによりサポートする AI モデルが異なります。
+1. This is a client software for performing real-time voice conversion using various Voice Conversion (VC) AI. The supported AI for voice conversion are as follows.
 
-| edition | platform       | Support Model |     |
-| ------- | -------------- | ------------- | --- |
-| std     | win            | Beatrice      |     |
-| std     | mac(m1)        | Beatrice      |     |
-| std     | linux(x86-64)  | Beatrice      |     |
-| std     | linux(aarch64) | Beatrice      |     |
-| cuda    | win            | Beatrice, RVC |     |
-| onnx    | win            | Beatrice, RVC |     |
-| onnx    | mac(m1)        | Beatrice, RVC |     |
+- [MMVC](https://github.com/isletennos/MMVC_Trainer) (only v1)
+- [so-vits-svc](https://github.com/svc-develop-team/so-vits-svc) (only v1)
+- [RVC(Retrieval-based-Voice-Conversion)](https://github.com/liujing04/Retrieval-based-Voice-Conversion-WebUI)
+- [DDSP-SVC](https://github.com/yxlllc/DDSP-SVC) (only v1)
+- [Beatrice JVS Corpus Edition](https://prj-beatrice.com/) * experimental,  (***NOT MIT License*** see [readme](https://github.com/w-okada/voice-changer/blob/master/server/voice_changer/Beatrice/)) *  Only for Windows, CPU dependent (only v1)
+  - [Beatrice v2](https://prj-beatrice.com/) (only for v2)
 
-## ダウンロードと関連リンク
-
-Windows 版、 M1 Mac 版は hugging face のリポジトリからダウンロードできます。
-
-- [VCClient のリポジトリ](https://huggingface.co/wok000/vcclient000/tree/main)
-- [Light VCClient for Beatrice v2 のリポジトリ](https://huggingface.co/wok000/light_vcclient_beatrice/tree/main)
-
-\*1 Linux はリポジトリを clone してお使いください。
-
-### 関連リンク
-
-- [Beatrice V2 トレーニングコードのリポジトリ](https://huggingface.co/fierce-cats/beatrice-trainer)
-- [Beatrice V2 トレーニングコード Colab 版](https://github.com/w-okada/beatrice-trainer-colab)
-
-### 関連ソフトウェア
-
-- [リアルタイムボイスチェンジャ VCClient](https://github.com/w-okada/voice-changer)
-- [読み上げソフトウェア TTSClient](https://github.com/w-okada/ttsclient)
-- [リアルタイム音声認識ソフトウェア ASRClient](https://github.com/w-okada/asrclient)
-
-## VC Client の特徴
-
-## 多様な AI モデルをサポート
-
-| AI モデル                                                                                                    | v.2       | v.1                  | ライセンス                                                                                 |
-| ------------------------------------------------------------------------------------------------------------ | --------- | -------------------- | ------------------------------------------------------------------------------------------ |
-| [RVC ](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI/blob/main/docs/jp/README.ja.md) | supported | supported            | リポジトリを参照してください。                                                             |
-| [Beatrice v1](https://prj-beatrice.com/)                                                                     | n/a       | supported (only win) | [独自](https://github.com/w-okada/voice-changer/tree/master/server/voice_changer/Beatrice) |
-| [Beatrice v2](https://prj-beatrice.com/)                                                                     | supported | n/a                  | [独自](https://huggingface.co/wok000/vcclient_model/blob/main/beatrice_v2_beta/readme.md)  |
-| [MMVC](https://github.com/isletennos/MMVC_Trainer)                                                           | n/a       | supported            | リポジトリを参照してください。                                                             |
-| [so-vits-svc](https://github.com/svc-develop-team/so-vits-svc)                                               | n/a       | supported            | リポジトリを参照してください。                                                             |
-| [DDSP-SVC](https://github.com/yxlllc/DDSP-SVC)                                                               | n/a       | supported            | リポジトリを参照してください。                                                             |
-
-## スタンドアロン、ネットワーク経由の両構成をサポート
-
-ローカル PC で完結した音声変換も、ネットワークを介した音声変換もサポートしています。
-ネットワークを介した利用を行うことで、ゲームなどの高負荷なアプリケーションと同時に使用する場合に音声変換の負荷を外部にオフロードすることができます。
+1. Distribute the load by running Voice Changer on a different PC
+   The real-time voice changer of this application works on a server-client configuration. By running the MMVC server on a separate PC, you can run it while minimizing the impact on other resource-intensive processes such as gaming commentary.
 
 ![image](https://user-images.githubusercontent.com/48346627/206640768-53f6052d-0a96-403b-a06c-6714a0b7471d.png)
 
-## 複数プラットフォームに対応
+3. Cross-platform compatibility
+   Supports Windows, Mac (including Apple Silicon M1), Linux, and Google Colaboratory.
+## Related Software
+- [Real-time Voice Changer VCClient](https://github.com/w-okada/voice-changer)
+- [Text-to-Speech Software TTSClient](https://github.com/w-okada/ttsclient)
+- [Real-Time Speech Recognition Software ASRClient](https://github.com/w-okada/asrclient)
 
-Windows, Mac(M1), Linux, Google Colab
+## Low-spec / older hardware preset
 
-\*1 Linux はリポジトリを clone してお使いください。
+This fork targets older machines. For lag-free conversion on weak hardware, use these settings in the GUI:
 
-## REST API を提供
+| Setting | Value | Why |
+| --- | --- | --- |
+| CHUNK | 192–256 | Smaller blocks reduce latency; go up if you hear crackling |
+| EXTRA | 2048 | Halves per-chunk compute vs the 4096 default with minor quality cost |
+| F0 Det. | `rmvpe_onnx` (or `fcpe`) | Fastest accurate pitch extractors |
+| GPU | your GPU if listed, else `-1` (CPU) | DirectML covers AMD/Intel/NVIDIA on Windows; CUDA used automatically on NVIDIA |
+| SilenceFront | on | Skips computing on lookahead silence |
+| Model | ONNX (export via "Export ONNX" or upload .onnx) | ONNX runtime is much faster than PyTorch on CPU and DirectML |
 
-各種プログラミング言語でクライアントを作成することができます。
+Notes:
+- On Windows the server ships with ONNX Runtime **DirectML**, which accelerates any DX12-capable GPU (old NVIDIA GTX cards, AMD, Intel iGPUs) with automatic CPU fallback.
+- On Linux with an NVIDIA GPU, `onnxruntime-gpu` (CUDA) is installed; CPU-only Linux machines fall back to the CPU provider automatically.
+- fp16 is automatically disabled on GPUs that run it slowly (GTX 10xx/16xx, P40) — this is intentional and faster.
 
-また、curl などの OS に組み込まれている HTTP クライアントを使って操作ができます。
+## Using VCClient as a virtual microphone
 
-## トラブルシュート
+**Browser apps (Discord web, Google Meet, etc.) — no driver needed:**
+1. Load the `extension/` folder via `chrome://extensions` → "Load unpacked" (Developer mode on).
+2. Start the VCClient server and load a model.
+3. Click the extension icon on the tab → "Enable virtual mic on this tab".
+4. In the site's audio settings, re-select the microphone (pick **VCClient Virtual Mic**). The site now receives your converted voice.
 
-[通信編](tutorials/trouble_shoot_communication_ja.md)
+**Desktop apps (Discord app, games) — one-time VB-Cable install:**
+1. Install the free [VB-Cable](https://vb-audio.com/Cable/) driver and reboot.
+2. VCClient auto-detects it (`GET /device_setup/status`). In server device mode, set the output device to **CABLE Input**.
+3. In your app, select **CABLE Output** as the microphone.
 
-## 開発者の署名について
+On Linux no driver is needed: `pactl load-module module-null-sink sink_name=vcclient sink_properties=device.description=VCClient` creates a virtual mic (`vcclient.monitor`), then point VCClient output at it.
 
-本ソフトウェアは開発元の署名しておりません。下記のように警告が出ますが、コントロールキーを押しながらアイコンをクリックすると実行できるようになります。これは Apple のセキュリティポリシーによるものです。実行は自己責任となります。
+# usage
+
+This is an app for performing voice changes with MMVC and so-vits-svc.
+
+It can be used in two main ways, in order of difficulty:
+
+- Using a pre-built binary
+- Setting up an environment with Docker or Anaconda and using it
+
+## (1) Usage with pre-built binaries
+
+- You can download and run executable binaries.
+
+- Please see [here](tutorials/tutorial_rvc_en_latest.md) for the tutorial. ([trouble shoot](https://github.com/w-okada/voice-changer/blob/master/tutorials/trouble_shoot_communication_ja.md))
+
+- It's now easy to try it out on [Google Colaboratory](https://github.com/w-okada/voice-changer/tree/v.2/w_okada's_Voice_Changer_version_2_x.ipynb) (requires a ngrok account). You can launch it from the 'Open in Colab' button in the top left corner.
+
+<img src="https://github.com/w-okada/voice-changer/assets/48346627/3f092e2d-6834-42f6-bbfd-7d389111604e" width="400" height="150">
+
+- We offer Windows and Mac versions on [hugging face](https://huggingface.co/wok000/vcclient000/tree/main)
+- v2 for Windows
+  - Please download and use `vcclient_win_std_xxx.zip`. You can perform voice conversion using a reasonably high-performance CPU without a GPU, or by utilizing DirectML to leverage GPUs (AMD, Nvidia). v2 supports both torch and onnx.
+  - If you have an Nvidia GPU, you can achieve faster voice conversion by using `vcclient_win_cuda_xxx.zip`.
+- v2 for Mac (Apple Silicon)
+  - Please download and use `vcclient_mac_xxx.zip`.
+- v1
+  - If you are using a Windows and Nvidia GPU, please download ONNX (cpu, cuda), PyTorch (cpu, cuda).
+  - If you are using a Windows and AMD/Intel GPU, please download ONNX (cpu, DirectML) and PyTorch (cpu, cuda). AMD/Intel GPUs are only enabled for ONNX models.
+  - In either case, for GPU support, PyTorch and Onnxruntime are only enabled if supported.
+  - If you are not using a GPU on Windows, please download ONNX (cpu, cuda) and PyTorch (cpu, cuda).
+
+- For Windows user, after unzipping the downloaded zip file, please run the `start_http.bat` file corresponding to your VC.
+
+- For Mac version, after unzipping the downloaded file, double-click the `startHttp.command` file corresponding to your VC. If a message indicating that the developer cannot be verified is displayed, please press the control key and click to run it again (or right-click to run it).
+
+- If you are connecting remotely, please use the `.command` file (Mac) or `.bat` file (Windows) with https instead of http.
+
+- The encoder of DDPS-SVC only supports hubert-soft.
+
+- [Download from hugging face](https://huggingface.co/wok000/vcclient000/tree/main)
+
+## (2) Usage after setting up the environment such as Docker or Anaconda
+
+Clone this repository and use it. Setting up WSL2 is essential for Windows. Additionally, setting up virtual environments such as Docker or Anaconda on WSL2 is also required. On Mac, setting up Python virtual environments such as Anaconda is necessary. Although preparation is required, this method works the fastest in many environments. **<font color="red"> Even without a GPU, it may work well enough with a reasonably new CPU </font>(refer to the section on real-time performance below)**.
+
+[Explanation video on installing WSL2 and Docker](https://youtu.be/POo_Cg0eFMU)
+
+[Explanation video on installing WSL2 and Anaconda](https://youtu.be/fba9Zhsukqw)
+
+To run docker, see [start docker](docker_vcclient/README_en.md).
+
+To run on Anaconda venv, see [server developer's guide](README_dev_en.md)
+
+To run on Linux using an AMD GPU, see [setup guide linux](tutorials/tutorial_anaconda_amd_rocm.md)
+
+
+# Software Signing
+
+This software is not signed by the developer. A warning message will appear, but you can run the software by clicking the icon while holding down the control key. This is due to Apple's security policy. Running the software is at your own risk.
 
 ![image](https://user-images.githubusercontent.com/48346627/212567711-c4a8d599-e24c-4fa3-8145-a5df7211f023.png)
 
-## Acknowledgments
+https://user-images.githubusercontent.com/48346627/212569645-e30b7f4e-079d-4504-8cf8-7816c5f40b00.mp4
 
-- [立ちずんだもん素材](https://seiga.nicovideo.jp/seiga/im10792934)
-- [いらすとや](https://www.irasutoya.com/)
-- [つくよみちゃん](https://tyc.rei-yumesaki.net/)
+# Acknowledgments
 
-```
-  本ソフトウェアの音声合成には、フリー素材キャラクター「つくよみちゃん」が無料公開している音声データを使用しています。
-  ■つくよみちゃんコーパス（CV.夢前黎）
-  https://tyc.rei-yumesaki.net/material/corpus/
-  © Rei Yumesaki
-```
+- [Tachizunda-mon materials](https://seiga.nicovideo.jp/seiga/im10792934)
+- [Irasutoya](https://www.irasutoya.com/)
+- [Tsukuyomi-chan](https://tyc.rei-yumesaki.net)
 
-- [あみたろの声素材工房](https://amitaro.net/)
-- [れぷりかどーる](https://kikyohiroto1227.wixsite.com/kikoto-utau)
+> This software uses the voice data of the free material character "Tsukuyomi-chan," which is provided for free by CV. Yumesaki Rei.
+>
+> - Tsukuyomi-chan Corpus (CV. Yumesaki Rei)
+>
+> https://tyc.rei-yumesaki.net/material/corpus/
+>
+> Copyright. Rei Yumesaki
 
-## 利用規約
+- [Amitaro's Onsozai kobo](https://amitaro.net/)
+- [Replica doll](https://kikyohiroto1227.wixsite.com/kikoto-utau)
 
-- リアルタイムボイスチェンジャーつくよみちゃんについては、つくよみちゃんコーパスの利用規約に準じ、次の目的で変換後の音声を使用することを禁止します。
+# Terms of Use
 
-```
+In accordance with the Tsukuyomi-chan Corpus Terms of Use for the Tsukuyomi-chan Real-time Voice Changer, the use of the converted voice for the following purposes is prohibited.
 
-■人を批判・攻撃すること。（「批判・攻撃」の定義は、つくよみちゃんキャラクターライセンスに準じます）
+- Criticizing or attacking individuals (the definition of "criticizing or attacking" is based on the Tsukuyomi-chan character license).
 
-■特定の政治的立場・宗教・思想への賛同または反対を呼びかけること。
+- Advocating for or opposing specific political positions, religions, or ideologies.
 
-■刺激の強い表現をゾーニングなしで公開すること。
+- Publicly displaying strongly stimulating expressions without proper zoning.
 
-■他者に対して二次利用（素材としての利用）を許可する形で公開すること。
-※鑑賞用の作品として配布・販売していただくことは問題ございません。
-```
+- Publicly disclosing secondary use (use as materials) for others.
+  (Distributing or selling as a work for viewing is not a problem.)
 
-- リアルタイムボイスチェンジャーあみたろについては、あみたろの声素材工房様の次の利用規約に準じます。詳細は[こちら](https://amitaro.net/voice/faq/#index_id6)
+Regarding the Real-time Voice Changer Amitaro, we prohibit the following uses in accordance with the terms of use of the Amitaro's koe-sozai kobo.[detail](https://amitaro.net/voice/faq/#index_id6)
 
-```
-あみたろの声素材やコーパス読み上げ音声を使って音声モデルを作ったり、ボイスチェンジャーや声質変換などを使用して、自分の声をあみたろの声に変換して使うのもOKです。
+Regarding the Real-time Voice Changer Kikoto Mahiro, we prohibit the following uses in accordance with the terms of use of Replica doll.[detail](https://kikyohiroto1227.wixsite.com/kikoto-utau/ter%EF%BD%8Ds-of-service)
 
-ただしその場合は絶対に、あみたろ（もしくは小春音アミ）の声に声質変換していることを明記し、あみたろ（および小春音アミ）が話しているわけではないことが誰でもわかるようにしてください。
-また、あみたろの声で話す内容は声素材の利用規約の範囲内のみとし、センシティブな発言などはしないでください。
-```
+# Disclaimer
 
-- リアルタイムボイスチェンジャー黄琴まひろについては、れぷりかどーるの利用規約に準じます。詳細は[こちら](https://kikyohiroto1227.wixsite.com/kikoto-utau/ter%EF%BD%8Ds-of-service)
-
-## 免責事項
-
-本ソフトウェアの使用または使用不能により生じたいかなる直接損害・間接損害・波及的損害・結果的損害 または特別損害についても、一切責任を負いません。
+We are not liable for any direct, indirect, consequential, incidental, or special damages arising out of or in any way connected with the use or inability to use this software.
