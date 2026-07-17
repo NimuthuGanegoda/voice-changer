@@ -21,6 +21,7 @@ python3 MMVCServerSIO.py -p 18888 \
     --rmvpe pretrain/rmvpe.pt \
     --rmvpe_onnx pretrain/rmvpe.onnx \
     --host 127.0.0.1 \
+    --test_connect 127.0.0.1 \
     --model_dir model_dir \
     --samples samples.json
 
