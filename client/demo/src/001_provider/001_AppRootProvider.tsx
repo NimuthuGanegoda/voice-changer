@@ -27,7 +27,7 @@ export const AppRootProvider = ({ children }: Props) => {
     const appGuiSettingState = useAppGuiSetting();
 
     const getGUISetting = async () => {
-        await appGuiSettingState.getAppGuiSetting(`/assets/gui_settings/GUI.json`);
+        await appGuiSettingState.getAppGuiSetting(`assets/gui_settings/GUI.json`);
     };
     const providerValue: AppRootValue = {
         audioContextState,

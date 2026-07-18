@@ -37,11 +37,18 @@ export const useAppGuiSetting = (): AppGuiSettingStateAndMethod => {
     const [version, setVersion] = useState<string>("")
     const [edition, setEdition] = useState<string>("")
     const getAppGuiSetting = async (url: string) => {
-        const res = await fetch(`${url}`, {
-            method: "GET",
-        })
-        const appSetting = await res.json() as AppGuiSetting
-        setAppGuiSetting(appSetting)
+        try {
+            const res = await fetch(`${url}`, {
+                method: "GET",
+            })
+            const appSetting = await res.json() as AppGuiSetting
+            setAppGuiSetting(appSetting)
+        } catch (e) {
+            // Fall back to the default demo GUI setting rather than hanging on
+            // "loading..." forever if this fetch 404s or the network drops.
+            console.error("failed to load GUI setting, using default", e)
+            setAppGuiSetting(InitialAppGuiDemoSetting)
+        }
         setGuiSettingLoaded(true)
     }
     const clearAppGuiSetting = () => {
@@ -51,7 +58,7 @@ export const useAppGuiSetting = (): AppGuiSettingStateAndMethod => {
 
     useEffect(() => {
         const getVersionInfo = async () => {
-            const res = await fetch(`/assets/gui_settings/version.txt`, {
+            const res = await fetch(`assets/gui_settings/version.txt`, {
                 method: "GET",
             })
             const version = await res.text()
@@ -62,7 +69,7 @@ export const useAppGuiSetting = (): AppGuiSettingStateAndMethod => {
 
     useEffect(() => {
         const getVersionInfo = async () => {
-            const res = await fetch(`/assets/gui_settings/edition.txt`, {
+            const res = await fetch(`assets/gui_settings/edition.txt`, {
                 method: "GET",
             })
             const edition = await res.text()
