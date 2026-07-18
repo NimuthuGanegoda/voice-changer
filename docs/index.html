@@ -1,1 +1,377 @@
-<!doctype html><html style="width:100%;height:100%;overflow:hidden"><head><meta charset="utf-8"/><title>Voice Changer Client Demo</title><script defer="defer" src="index.js"></script></head><body style="width:100%;height:100%;margin:0"><div id="app" style="width:100%;height:100%"></div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VC Client — Realtime Voice Changer</title>
+<link rel="icon" href="favicon.ico" />
+<meta name="description" content="Realtime voice conversion client. RVC, DDSP-SVC, so-vits-svc, MMVC, Beatrice." />
+<meta property="og:title" content="VC Client — Realtime Voice Changer" />
+<meta property="og:description" content="Realtime voice conversion client. RVC, DDSP-SVC, so-vits-svc, MMVC, Beatrice." />
+<style>
+  :root {
+    --ink: #0b0d10;
+    --panel: #14171c;
+    --panel-raised: #191d23;
+    --line: #262b33;
+    --text: #dfe3e8;
+    --text-muted: #8b93a1;
+    --trace: #ff8a3d;
+    --trace-dim: #8a5228;
+    --trace-glow: rgba(255, 138, 61, 0.35);
+    --focus: #ffb073;
+  }
+  :root[data-theme="light"] {
+    --ink: #eef0f2;
+    --panel: #ffffff;
+    --panel-raised: #f7f8fa;
+    --line: #d8dce2;
+    --text: #14171c;
+    --text-muted: #5b6472;
+    --trace: #d9660c;
+    --trace-dim: #e3a877;
+    --trace-glow: rgba(217, 102, 12, 0.18);
+    --focus: #b8500a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ink: #eef0f2;
+      --panel: #ffffff;
+      --panel-raised: #f7f8fa;
+      --line: #d8dce2;
+      --text: #14171c;
+      --text-muted: #5b6472;
+      --trace: #d9660c;
+      --trace-dim: #e3a877;
+      --trace-glow: rgba(217, 102, 12, 0.18);
+      --focus: #b8500a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+  }
+  .label {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+
+  a { color: var(--trace); }
+  a:focus-visible, button:focus-visible, .btn:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+  }
+
+  .hero {
+    position: relative;
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .hero canvas {
+    display: block;
+    width: 100%;
+    height: 160px;
+  }
+  .hero-content {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px 40px;
+  }
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .eyebrow .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--trace);
+    box-shadow: 0 0 8px var(--trace-glow);
+  }
+  h1 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  h1 .cursor {
+    color: var(--trace);
+  }
+  .tagline {
+    color: var(--text-muted);
+    font-size: 1.08rem;
+    max-width: 46ch;
+    margin: 0 0 28px;
+  }
+
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 24px 26px;
+  }
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .panel-head h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  .panel p {
+    color: var(--text-muted);
+    margin: 0 0 16px;
+    max-width: 60ch;
+  }
+  .panel p:last-child { margin-bottom: 0; }
+
+  .buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.92rem;
+    border: 1px solid transparent;
+    transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary {
+    background: var(--trace);
+    color: #17110a;
+  }
+  .btn-primary:hover { background: var(--focus); }
+  .btn-secondary {
+    background: var(--panel-raised);
+    color: var(--text);
+    border-color: var(--line);
+  }
+  .btn-secondary:hover { border-color: var(--trace-dim); }
+
+  .cmd {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 0.88rem;
+    overflow-x: auto;
+  }
+  .cmd + .cmd { margin-top: 10px; }
+  .cmd .prompt { color: var(--trace-dim); user-select: none; }
+
+  .chain {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .chain-item {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+  .chain-item .idx {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+    font-size: 0.68rem;
+    color: var(--trace-dim);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .chain-item .name {
+    font-weight: 600;
+    font-size: 0.93rem;
+  }
+
+  footer {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px 48px;
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  footer a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+  footer a:hover { color: var(--trace); }
+
+  @media (max-width: 480px) {
+    .hero canvas { height: 110px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <canvas id="trace" aria-hidden="true"></canvas>
+  <div class="hero-content">
+    <div class="eyebrow">
+      <span class="dot"></span>
+      <span class="label">Realtime signal path &middot; local inference</span>
+    </div>
+    <h1>VC Client<span class="cursor">_</span></h1>
+    <p class="tagline">A realtime voice conversion client. Speak into your mic, get a different voice out — locally, on your own machine.</p>
+    <div class="buttons">
+      <a class="btn btn-primary" href="https://github.com/NimuthuGanegoda/voice-changer/releases/latest/download/VoiceChanger.exe">Download for Windows</a>
+      <a class="btn btn-secondary" href="https://github.com/NimuthuGanegoda/voice-changer">View source on GitHub</a>
+    </div>
+  </div>
+</div>
+
+<main>
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Why no live demo here</h2>
+      <span class="label">Static page</span>
+    </div>
+    <p>Voice conversion needs a live audio stream from your microphone and a model running against your CPU or GPU — neither is available to a page hosted here. Run the client locally to try it against your own voice.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Run from source</h2>
+      <span class="label">Terminal</span>
+    </div>
+    <p>Linux / macOS</p>
+    <div class="cmd mono"><span class="prompt">$</span> bash start_local.sh</div>
+    <p style="margin-top:16px">Windows</p>
+    <div class="cmd mono"><span class="prompt">&gt;</span> start_local.bat</div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Conversion engines</h2>
+      <span class="label">Interchangeable</span>
+    </div>
+    <p>Swap the inference engine per model slot — each has different quality, speed, and hardware tradeoffs.</p>
+    <div class="chain">
+      <div class="chain-item"><span class="idx mono">01</span><span class="name">RVC</span></div>
+      <div class="chain-item"><span class="idx mono">02</span><span class="name">DDSP-SVC</span></div>
+      <div class="chain-item"><span class="idx mono">03</span><span class="name">so-vits-svc</span></div>
+      <div class="chain-item"><span class="idx mono">04</span><span class="name">MMVC</span></div>
+      <div class="chain-item"><span class="idx mono">05</span><span class="name">Beatrice</span></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <a href="https://github.com/NimuthuGanegoda/voice-changer/blob/master/README.md">Full README</a>
+  <a href="https://github.com/NimuthuGanegoda/voice-changer/releases">All releases</a>
+  <a href="https://github.com/NimuthuGanegoda/voice-changer/blob/master/.github/FAQ.md">FAQ</a>
+</footer>
+
+<script>
+(function () {
+  var canvas = document.getElementById("trace");
+  var ctx = canvas.getContext("2d");
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var w, h, t = 0;
+
+  function resize() {
+    w = canvas.clientWidth;
+    h = canvas.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function traceColor() {
+    return getComputedStyle(document.documentElement).getPropertyValue("--trace").trim() || "#ff8a3d";
+  }
+  function lineColor() {
+    return getComputedStyle(document.documentElement).getPropertyValue("--line").trim() || "#262b33";
+  }
+
+  function draw(time) {
+    ctx.clearRect(0, 0, w, h);
+
+    // frequency-axis ticks
+    ctx.strokeStyle = lineColor();
+    ctx.lineWidth = 1;
+    var ticks = 24;
+    for (var i = 0; i <= ticks; i++) {
+      var x = (w / ticks) * i;
+      ctx.beginPath();
+      ctx.moveTo(x, h - 8);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+
+    // synthetic voice-like waveform: a few harmonics + slow amplitude envelope
+    var mid = h * 0.56;
+    ctx.beginPath();
+    ctx.strokeStyle = traceColor();
+    ctx.lineWidth = 2;
+    var samples = Math.floor(w);
+    for (var s = 0; s <= samples; s += 2) {
+      var x2 = s;
+      var phase = (x2 / w) * Math.PI * 10 + t;
+      var envelope = 0.5 + 0.5 * Math.sin(t * 0.6 + x2 * 0.01);
+      var y =
+        Math.sin(phase) * 22 * envelope +
+        Math.sin(phase * 2.3 + 1.1) * 10 * envelope +
+        Math.sin(phase * 0.5 + 2.2) * 14 * envelope;
+      var py = mid + y;
+      if (s === 0) ctx.moveTo(x2, py);
+      else ctx.lineTo(x2, py);
+    }
+    ctx.stroke();
+
+    ctx.save();
+    ctx.shadowColor = traceColor();
+    ctx.shadowBlur = 10;
+    ctx.globalAlpha = 0.5;
+    ctx.stroke();
+    ctx.restore();
+
+    if (!reduceMotion) {
+      t += 0.045;
+      requestAnimationFrame(draw);
+    }
+  }
+  requestAnimationFrame(draw);
+})();
+</script>
+
+</body>
+</html>
