@@ -55,6 +55,19 @@ if (-not $installer) {
     exit 1
 }
 
+# Verify the installer is actually signed by VB-Audio before running it
+# elevated - HTTPS protects the transport, not against a compromised/hijacked
+# origin serving something else at the same URL.
+$sig = Get-AuthenticodeSignature -FilePath $installer.FullName
+if ($sig.Status -ne "Valid") {
+    Write-Error "VBCABLE_Setup_x64.exe signature check failed (status: $($sig.Status)) - refusing to run an unverified installer as Administrator. Download it yourself from https://vb-audio.com/Cable/ and inspect it before running."
+    exit 1
+}
+if ($sig.SignerCertificate.Subject -notmatch "BUREL VINCENT") {
+    Write-Error "VBCABLE_Setup_x64.exe is signed, but not by VB-Audio's publisher (got: $($sig.SignerCertificate.Subject)) - refusing to run as Administrator."
+    exit 1
+}
+
 Write-Host "Installing VB-Cable driver (silent)..."
 Start-Process -FilePath $installer.FullName -ArgumentList "-i", "-h" -Wait
 

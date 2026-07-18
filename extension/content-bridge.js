@@ -13,8 +13,18 @@
   let nextReqId = 1;
   const pending = new Map(); // reqId -> seq
 
+  // window.postMessage is the only channel between this isolated-world script
+  // and the MAIN-world patch (content-main.js), but it's also visible to any
+  // script running in the page. Both content scripts run at document_start,
+  // before the page's own <script> tags execute, so this token - generated
+  // here and locked onto by whichever side sees it first - is not observable
+  // by ordinary page JS. It doesn't defend against another document_start
+  // extension racing us, but that's a much narrower threat than "any page
+  // script, any time" (which is what an unauthenticated bridge allows).
+  const PAGE_TOKEN = (self.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
   function sendConfig() {
-    window.postMessage({ __vcclient: true, type: "VC_CONFIG", enabled }, "*");
+    window.postMessage({ __vcclient: true, token: PAGE_TOKEN, type: "VC_CONFIG", enabled }, "*");
   }
 
   function connect() {
@@ -33,7 +43,7 @@
       const bin = msg[1];
       if (!bin || typeof bin === "number") return;
       const buf = bin instanceof ArrayBuffer ? bin : bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);
-      window.postMessage({ __vcclient: true, type: "VC_AUDIO_RES", seq, buf }, "*", [buf]);
+      window.postMessage({ __vcclient: true, token: PAGE_TOKEN, type: "VC_AUDIO_RES", seq, buf }, "*", [buf]);
     });
   }
 
@@ -48,8 +58,15 @@
     if (ev.source !== window || !ev.data || ev.data.__vcclient !== true) return;
     const d = ev.data;
     if (d.type === "VC_MAIN_READY") {
+      // No token to check yet - this is the one message content-main.js sends
+      // before it has learned PAGE_TOKEN from our reply below.
       sendConfig();
     } else if (d.type === "VC_AUDIO_REQ") {
+      // Only content-main.js has seen PAGE_TOKEN (via the VC_CONFIG reply
+      // above), so this rejects audio requests forged by a page script that
+      // started listening after that handshake - which is any ordinary
+      // <script>, since those run after document_start content scripts.
+      if (d.token !== PAGE_TOKEN) return;
       if (!enabled && !socket) connect(); // site picked the virtual device explicitly
       if (!socket || !socket.connected) return; // chunk dropped; MAIN outputs silence
       const reqId = nextReqId++;

@@ -104,13 +104,26 @@ class MMVC_Rest_VoiceChanger:
             return {"status": "Error", "message": str(e)}
 
     async def soundboard_upload(self, file: UploadFile = File(...), filename: str = Form(...)):
+        # Soundboard clips are short sound effects, not model files - cap size and
+        # extension here rather than in the shared upload_file() helper, which
+        # /upload_file also uses for legitimately multi-GB model uploads.
+        MAX_SOUNDBOARD_BYTES = 20 * 1024 * 1024  # 20MB
+        ALLOWED_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
         try:
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in ALLOWED_EXTENSIONS:
+                return {"status": "Error", "message": f"unsupported file type {ext}"}
+            if file.size is not None and file.size > MAX_SOUNDBOARD_BYTES:
+                return {"status": "Error", "message": "file too large (20MB limit)"}
             res = upload_file(SOUNDBOARD_DIR, file, filename)
             return res
         except Exception as e:
             return {"status": "Error", "message": str(e)}
 
     async def tts(self, request: TTSRequest):
+        MAX_TTS_CHARS = 500
+        if len(request.text) > MAX_TTS_CHARS:
+            return {"status": "Error", "message": f"text too long ({MAX_TTS_CHARS} char limit)"}
         try:
             import pyttsx3
             import tempfile

@@ -19,7 +19,6 @@ RUN git clone https://github.com/NimuthuGanegoda/voice-changer.git -b master
 RUN chmod 0777 /voice-changer/server
 WORKDIR /voice-changer/server
 RUN pip install numpy==2.2.6 \
-        && pip install pyworld==0.3.3 --no-build-isolation \
         && pip install -r requirements.txt
 
 

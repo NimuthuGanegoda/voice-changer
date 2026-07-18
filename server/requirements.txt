@@ -40,3 +40,9 @@ dataclasses_json==0.6.7
 onnxsim==0.6.5
 torchfcpe==0.0.4
 pyttsx3==2.99
+# Missing from this file entirely until now - a fresh install couldn't start the
+# server at all (RVC's DioPitchExtractor imports it unconditionally). 0.3.3 (the
+# version referenced in docker_vcclient/Dockerfile) fails to build against
+# modern Cython (json.dumps on a PosixPath in generated module metadata);
+# 0.3.5 builds cleanly with no special install flags.
+pyworld==0.3.5

@@ -3,12 +3,28 @@ import shutil
 from fastapi import UploadFile
 
 
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
 def sanitize_filename(filename: str) -> str:
-    safe_filename = os.path.basename(filename)
+    # os.path.basename() on the *running* OS's separator strips traversal
+    # components for that OS, but a Linux server still treats a Windows-style
+    # "..\\..\\x" as one literal filename with backslashes in it rather than
+    # stripping it - normalize both separators before taking the basename.
+    safe_filename = os.path.basename(filename.replace("\\", "/"))
+    safe_filename = safe_filename.lstrip(".") or "upload"
+
+    file_root, file_ext = os.path.splitext(safe_filename)
+    if file_root.upper() in _WINDOWS_RESERVED_NAMES:
+        file_root = f"_{file_root}"
+        safe_filename = file_root + file_ext
 
     max_length = 255
     if len(safe_filename) > max_length:
-        file_root, file_ext = os.path.splitext(safe_filename)
         safe_filename = file_root[: max_length - len(file_ext)] + file_ext
 
     return safe_filename

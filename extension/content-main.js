@@ -20,14 +20,24 @@
   let reqSeq = 0;
   const pendingBySeq = new Map(); // seq -> session
 
+  // Locked onto whichever token the FIRST trusted VC_CONFIG carries. Since both
+  // content scripts run at document_start (before the page's own <script> tags),
+  // that first message is only observable by us and content-bridge.js - a page
+  // script loading later can neither read this token nor forge a VC_CONFIG
+  // early enough to have us lock onto a fake one.
+  let bridgeToken = null;
+
   // ---- messaging with the isolated-world bridge ----
   window.addEventListener("message", (ev) => {
     if (ev.source !== window || !ev.data || ev.data.__vcclient !== true) return;
     const d = ev.data;
     if (d.type === "VC_CONFIG") {
+      if (bridgeToken === null) bridgeToken = d.token;
+      else if (d.token !== bridgeToken) return; // forged after the real handshake
       state.enabled = !!d.enabled;
       state.bridgeReady = true;
     } else if (d.type === "VC_AUDIO_RES") {
+      if (d.token !== bridgeToken) return;
       const session = pendingBySeq.get(d.seq);
       pendingBySeq.delete(d.seq);
       if (session && d.buf) session.onConverted(new Int16Array(d.buf));
@@ -102,7 +112,7 @@
         const oldest = pendingBySeq.keys().next().value;
         pendingBySeq.delete(oldest);
       }
-      window.postMessage({ __vcclient: true, type: "VC_AUDIO_REQ", seq, buf: i16.buffer }, "*", [i16.buffer]);
+      window.postMessage({ __vcclient: true, token: bridgeToken, type: "VC_AUDIO_REQ", seq, buf: i16.buffer }, "*", [i16.buffer]);
 
       const output = ev.outputBuffer.getChannelData(0);
       if (playBuffer.length >= output.length) {
