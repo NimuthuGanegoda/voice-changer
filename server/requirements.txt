@@ -39,4 +39,4 @@ sounddevice==0.5.5
 dataclasses_json==0.6.7
 onnxsim==0.6.5
 torchfcpe==0.0.4
-edge-tts
+pyttsx3==2.99

@@ -4,16 +4,19 @@ import torch
 import onnxruntime
 
 
-def _cpuProviderOptions():
+def _cpuSessionOptions(so: onnxruntime.SessionOptions | None = None):
     # Sequential executor with intra-op threads sized to the machine is the
     # low-latency configuration; 8+8 parallel threads oversubscribe small CPUs.
-    return [
-        {
-            "intra_op_num_threads": max(1, (os.cpu_count() or 4) - 1),
-            "execution_mode": onnxruntime.ExecutionMode.ORT_SEQUENTIAL,
-            "inter_op_num_threads": 1,
-        }
-    ]
+    # These are SessionOptions fields, not CPUExecutionProvider provider-options
+    # keys, so they must be applied via sess_options= at InferenceSession(...).
+    # Accepts an existing SessionOptions (e.g. one a caller already set
+    # log_severity_level on) so both configurations land on the same object.
+    if so is None:
+        so = onnxruntime.SessionOptions()
+    so.intra_op_num_threads = max(1, (os.cpu_count() or 4) - 1)
+    so.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+    so.inter_op_num_threads = 1
+    return so
 
 
 class DeviceManager(object):
@@ -47,24 +50,30 @@ class DeviceManager(object):
                 dev = torch.device("cpu")
         return dev
 
-    def getOnnxExecutionProvider(self, gpu: int):
+    def getOnnxExecutionProvider(self, gpu: int, sess_options: onnxruntime.SessionOptions | None = None):
+        # Returns (providers, provider_options, session_options). provider_options
+        # must be the same length as providers or InferenceSession(...) raises -
+        # CPU thread tuning lives in session_options instead, so every entry here
+        # is just an empty per-provider options dict. Pass an existing
+        # SessionOptions via sess_options= if the caller already configured one
+        # (e.g. log_severity_level) so the CPU thread tuning lands on it too.
         availableProviders = onnxruntime.get_available_providers()
         devNum = torch.cuda.device_count()
         if gpu >= 0 and "CUDAExecutionProvider" in availableProviders and devNum > 0:
             if gpu < devNum:  # ひとつ前のif文で弾いてもよいが、エラーの解像度を上げるため一段下げ。
-                return ["CUDAExecutionProvider"], [{"device_id": gpu}]
+                return ["CUDAExecutionProvider"], [{"device_id": gpu}], sess_options
             else:
                 print("[Voice Changer] device detection error, fallback to cpu")
-                return ["CPUExecutionProvider"], _cpuProviderOptions()
+                return ["CPUExecutionProvider"], [{}], _cpuSessionOptions(sess_options)
         elif gpu >= 0 and "DmlExecutionProvider" in availableProviders:
-            return ["DmlExecutionProvider"], [{"device_id": gpu}]
+            return ["DmlExecutionProvider"], [{"device_id": gpu}], sess_options
         else:
             providers = []
             for p in ["CoreMLExecutionProvider", "OpenVINOExecutionProvider", "QNNExecutionProvider"]:
                 if p in availableProviders:
                     providers.append(p)
             providers.append("CPUExecutionProvider")
-            return providers, _cpuProviderOptions()
+            return providers, [{} for _ in providers], _cpuSessionOptions(sess_options)
 
     def setForceTensor(self, forceTensor: bool):
         self.forceTensor = forceTensor

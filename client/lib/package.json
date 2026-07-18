@@ -49,7 +49,6 @@
     },
     "dependencies": {
         "@types/readable-stream": "^4.0.10",
-        "amazon-chime-sdk-js": "^3.20.0",
         "buffer": "^6.0.3",
         "localforage": "^1.10.0",
         "onnxruntime-web": "^1.26.0",

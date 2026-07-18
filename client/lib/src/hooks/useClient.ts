@@ -160,7 +160,7 @@ export const useClient = (props: UseClientProps): ClientState => {
             if (!props.audioContext) {
                 return;
             }
-            const voiceChangerClient = new VoiceChangerClient(props.audioContext, true, {
+            const voiceChangerClient = new VoiceChangerClient(props.audioContext, {
                 notifySendBufferingTime: (val: number) => {
                     setBufferingTime(val);
                 },

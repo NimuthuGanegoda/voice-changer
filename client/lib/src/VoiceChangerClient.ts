@@ -1,13 +1,12 @@
 import { VoiceChangerWorkletNode, VoiceChangerWorkletListener, InternalCallback } from "./client/VoiceChangerWorkletNode";
 // @ts-ignore
 import workerjs from "raw-loader!../worklet/dist/index.js";
-import { VoiceFocusDeviceTransformer, VoiceFocusTransformDevice } from "amazon-chime-sdk-js";
 import { createDummyMediaStream, validateUrl } from "./util";
 import { DefaultClientSettng, MergeModelRequest, ServerSettingKey, VoiceChangerClientSetting, WorkletNodeSetting, WorkletSetting } from "./const";
 import { ServerConfigurator } from "./client/ServerConfigurator";
 
 // オーディオデータの流れ
-// input node(mic or MediaStream) -> [vf node] -> [vc node] ->
+// input node(mic or MediaStream) -> [vc node] ->
 //    sio/rest server ->  [vc node] -> output node
 
 import { BlockingQueue } from "./utils/BlockingQueue";
@@ -15,9 +14,6 @@ import { BlockingQueue } from "./utils/BlockingQueue";
 export class VoiceChangerClient {
     private configurator: ServerConfigurator;
     private ctx: AudioContext;
-    private vfEnable = false;
-    private vf: VoiceFocusDeviceTransformer | null = null;
-    private currentDevice: VoiceFocusTransformDevice | null = null;
 
     private currentMediaStream: MediaStream | null = null;
     private currentMediaStreamAudioSourceNode: MediaStreamAudioSourceNode | null = null;
@@ -38,11 +34,10 @@ export class VoiceChangerClient {
 
     private sem = new BlockingQueue<number>();
 
-    constructor(ctx: AudioContext, vfEnable: boolean, voiceChangerWorkletListener: VoiceChangerWorkletListener) {
+    constructor(ctx: AudioContext, voiceChangerWorkletListener: VoiceChangerWorkletListener) {
         this.sem.enqueue(0);
         this.configurator = new ServerConfigurator("");
         this.ctx = ctx;
-        this.vfEnable = vfEnable;
         this.promiseForInitialize = new Promise<void>(async (resolve) => {
             const scriptUrl = URL.createObjectURL(new Blob([workerjs], { type: "text/javascript" }));
 
@@ -78,11 +73,6 @@ export class VoiceChangerClient {
             this.vcOutNode.connect(this.monitorGainNode); // vc node -> monitor node
             this.monitorGainNode.connect(this.currentMediaStreamAudioDestinationMonitorNode);
 
-            if (this.vfEnable) {
-                this.vf = await VoiceFocusDeviceTransformer.create({ variant: "c20" });
-                const dummyMediaStream = createDummyMediaStream(this.ctx);
-                this.currentDevice = (await this.vf.createTransformDevice(dummyMediaStream)) || null;
-            }
             resolve();
         });
     }
@@ -109,7 +99,7 @@ export class VoiceChangerClient {
     setup = async () => {
         const lockNum = await this.lock();
 
-        console.log(`Input Setup=> echo: ${this.setting.echoCancel}, noise1: ${this.setting.noiseSuppression}, noise2: ${this.setting.noiseSuppression2}`);
+        console.log(`Input Setup=> echo: ${this.setting.echoCancel}, noise1: ${this.setting.noiseSuppression}`);
         // condition check
         if (!this.vcInNode) {
             console.warn("vc node is not initialized.");
@@ -165,27 +155,16 @@ export class VoiceChangerClient {
             this.currentMediaStream = this.setting.audioInput;
         }
 
-        // connect nodes.
+        // connect nodes. Disconnect the previous source/gain nodes first - setup()
+        // runs on every device/echo/noise-suppression setting change, and without
+        // this the old nodes stay wired into vcInNode and accumulate on each change.
+        this.currentMediaStreamAudioSourceNode?.disconnect();
+        this.inputGainNode?.disconnect();
         this.currentMediaStreamAudioSourceNode = this.ctx.createMediaStreamSource(this.currentMediaStream);
         this.inputGainNode = this.ctx.createGain();
         this.inputGainNode.gain.value = this.setting.inputGain;
         this.currentMediaStreamAudioSourceNode.connect(this.inputGainNode);
-        if (this.currentDevice && this.setting.noiseSuppression2) {
-            this.currentDevice.chooseNewInnerDevice(this.currentMediaStream);
-            const voiceFocusNode = await this.currentDevice.createAudioNode(this.ctx); // vf node
-            this.inputGainNode.connect(voiceFocusNode.start); // input node -> vf node
-            voiceFocusNode.end.connect(this.vcInNode);
-        } else {
-            // console.log("input___ media stream", this.currentMediaStream)
-            // this.currentMediaStream.getTracks().forEach(x => {
-            //     console.log("input___ media stream set", x.getSettings())
-            //     console.log("input___ media stream con", x.getConstraints())
-            //     console.log("input___ media stream cap", x.getCapabilities())
-            // })
-            // console.log("input___ media node", this.currentMediaStreamAudioSourceNode)
-            // console.log("input___ gain node", this.inputGainNode.channelCount, this.inputGainNode)
-            this.inputGainNode.connect(this.vcInNode);
-        }
+        this.inputGainNode.connect(this.vcInNode);
         this.vcInNode.setOutputNode(this.vcOutNode);
         console.log("Input Setup=> success");
         await this.unlock(lockNum);
@@ -234,7 +213,7 @@ export class VoiceChangerClient {
 
     updateClientSetting = async (setting: VoiceChangerClientSetting) => {
         let reconstructInputRequired = false;
-        if (this.setting.audioInput != setting.audioInput || this.setting.echoCancel != setting.echoCancel || this.setting.noiseSuppression != setting.noiseSuppression || this.setting.noiseSuppression2 != setting.noiseSuppression2 || this.setting.sampleRate != setting.sampleRate) {
+        if (this.setting.audioInput != setting.audioInput || this.setting.echoCancel != setting.echoCancel || this.setting.noiseSuppression != setting.noiseSuppression || this.setting.sampleRate != setting.sampleRate) {
             reconstructInputRequired = true;
         }
 
@@ -359,6 +338,21 @@ export class VoiceChangerClient {
     };
     getPerformance = () => {
         return this.configurator.getPerformance();
+    };
+    getDeviceSetupStatus = () => {
+        return this.configurator.getDeviceSetupStatus();
+    };
+    playSound = (filename: string) => {
+        return this.configurator.playSound(filename);
+    };
+    tts = (text: string, voice: string = "") => {
+        return this.configurator.tts(text, voice);
+    };
+    getSoundboardList = () => {
+        return this.configurator.getSoundboardList();
+    };
+    uploadSoundboardFile = (file: File) => {
+        return this.configurator.uploadSoundboardFile(file);
     };
 
     getSocketId = () => {

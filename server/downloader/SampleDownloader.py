@@ -16,11 +16,14 @@ logger = VoiceChangaerLogger.get_instance().getLogger()
 
 
 def downloadInitialSamples(mode: RVCSampleMode, model_dir: str):
-    sampleJsonUrls, sampleModels = getSampleJsonAndModelIds(mode)
-    sampleJsons = _downloadSampleJsons(sampleJsonUrls)
+    # Check model_dir BEFORE reaching out for the sample catalog - otherwise every
+    # startup makes a network call it's about to throw away, whether or not
+    # samples are actually needed.
     if os.path.exists(model_dir):
         logger.info("[Voice Changer] model_dir is already exists. skip download samples.")
         return
+    sampleJsonUrls, sampleModels = getSampleJsonAndModelIds(mode)
+    sampleJsons = _downloadSampleJsons(sampleJsonUrls)
     samples = _generateSampleList(sampleJsons)
     slotIndex = list(range(len(sampleModels)))
     _downloadSamples(samples, sampleModels, model_dir, slotIndex)

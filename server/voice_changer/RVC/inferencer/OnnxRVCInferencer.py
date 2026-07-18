@@ -12,10 +12,11 @@ class OnnxRVCInferencer(Inferencer):
         (
             onnxProviders,
             onnxProviderOptions,
+            onnxSessionOptions,
         ) = DeviceManager.get_instance().getOnnxExecutionProvider(gpu)
 
         onnx_session = onnxruntime.InferenceSession(
-            file, providers=onnxProviders, provider_options=onnxProviderOptions
+            file, sess_options=onnxSessionOptions, providers=onnxProviders, provider_options=onnxProviderOptions
         )
 
         # check half-precision

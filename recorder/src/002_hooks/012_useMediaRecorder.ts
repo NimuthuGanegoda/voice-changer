@@ -1,4 +1,3 @@
-import { VoiceFocusDeviceTransformer, VoiceFocusTransformDevice } from "amazon-chime-sdk-js";
 import { useEffect, useMemo, useState } from "react";
 import { Duplex, DuplexOptions } from "readable-stream";
 import MicrophoneStream from "microphone-stream";
@@ -116,8 +115,6 @@ export const useMediaRecorder = (): MediaRecorderStateAndMethod => {
     const audioContext = useMemo(() => {
         return new AudioContext({ sampleRate: applicationSetting.applicationSetting.sample_rate });
     }, [])
-    const [voiceFocusDeviceTransformer, setVoiceFocusDeviceTransformer] = useState<VoiceFocusDeviceTransformer>();
-    const [voiceFocusTransformDevice, setVoiceFocusTransformDevice] = useState<VoiceFocusTransformDevice | null>(null)
     const outputNode = useMemo(() => {
         return audioContext.createMediaStreamDestination();
     }, [])
@@ -162,11 +159,6 @@ export const useMediaRecorder = (): MediaRecorderStateAndMethod => {
     // AudioInput変更のトリガーによりinputのパイプラインを再生成する
     const setNewAudioInputDevice = async (deviceId: string) => {
         console.log("setNewAudioInputDevice", deviceId)
-        let vf = voiceFocusDeviceTransformer
-        if (!vf) {
-            vf = await VoiceFocusDeviceTransformer.create({ variant: 'c20' })
-            setVoiceFocusDeviceTransformer(vf)
-        }
         if (micMediaStream) {
             micMediaStream.getTracks().forEach(x => {
                 x.stop()
@@ -190,19 +182,12 @@ export const useMediaRecorder = (): MediaRecorderStateAndMethod => {
         //     console.log("Capability:", t.getCapabilities())
         //     console.log("Constraint:", t.getConstraints())
         // })
-        let currentDevice = voiceFocusTransformDevice
-        if (!currentDevice) {
-            currentDevice = (await vf.createTransformDevice(newMicMediaStream)) || null;
-            setVoiceFocusTransformDevice(currentDevice)
-        } else {
-            currentDevice.chooseNewInnerDevice(newMicMediaStream)
-        }
-
+        // "vf" (noise-focus) stream used to run through Amazon Chime SDK's Voice
+        // Focus, which fetches its model from AWS's CDN at runtime - that's a
+        // hard no for an offline app. Now it's just the same browser-native
+        // noiseSuppression-constrained stream as the mic recording.
         const nodeToVF = audioContext.createMediaStreamSource(newMicMediaStream);
-
-        const voiceFocusNode = await currentDevice!.createAudioNode(audioContext);
-        nodeToVF.connect(voiceFocusNode.start);
-        voiceFocusNode.end.connect(outputNode);
+        nodeToVF.connect(outputNode);
 
         setMicMediaStream(newMicMediaStream)
         setVfMediaStream(outputNode.stream)

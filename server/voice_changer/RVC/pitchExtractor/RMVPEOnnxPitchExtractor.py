@@ -16,15 +16,17 @@ class RMVPEOnnxPitchExtractor(PitchExtractor):
         self.f0_mel_min = 1127 * np.log(1 + self.f0_min / 700)
         self.f0_mel_max = 1127 * np.log(1 + self.f0_max / 700)
 
+        so = onnxruntime.SessionOptions()
+        so.log_severity_level = 3
+
         (
             onnxProviders,
             onnxProviderOptions,
-        ) = DeviceManager.get_instance().getOnnxExecutionProvider(gpu)
+            so,
+        ) = DeviceManager.get_instance().getOnnxExecutionProvider(gpu, sess_options=so)
         self.onnxProviders = onnxProviders
         self.onnxProviderOptions = onnxProviderOptions
 
-        so = onnxruntime.SessionOptions()
-        so.log_severity_level = 3
         self.onnx_session = onnxruntime.InferenceSession(self.file, sess_options=so, providers=onnxProviders, provider_options=onnxProviderOptions)
 
     def extract(self, audio, pitchf, f0_up_key, sr, window, silence_front=0):

@@ -16,6 +16,26 @@ export class ServerConfigurator {
         return this.restClient.getPerformance();
     };
 
+    getDeviceSetupStatus = async () => {
+        return this.restClient.getDeviceSetupStatus();
+    };
+
+    playSound = async (filename: string) => {
+        return this.restClient.playSound(filename);
+    };
+
+    tts = async (text: string, voice: string = "") => {
+        return this.restClient.tts(text, voice);
+    };
+
+    getSoundboardList = async () => {
+        return this.restClient.getSoundboardList();
+    };
+
+    uploadSoundboardFile = async (file: File) => {
+        return this.restClient.uploadSoundboardFile(file);
+    };
+
     updateSettings = async (key: ServerSettingKey, val: string) => {
         return this.restClient.updateSettings(key, val);
     };

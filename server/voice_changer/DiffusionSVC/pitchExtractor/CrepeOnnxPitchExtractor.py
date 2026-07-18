@@ -16,10 +16,11 @@ class CrepeOnnxPitchExtractor(PitchExtractor):
         (
             onnxProviders,
             onnxProviderOptions,
+            onnxSessionOptions,
         ) = DeviceManager.get_instance().getOnnxExecutionProvider(gpu)
 
         self.onnx_session = onnxruntime.InferenceSession(
-            file, providers=onnxProviders, provider_options=onnxProviderOptions
+            file, sess_options=onnxSessionOptions, providers=onnxProviders, provider_options=onnxProviderOptions
         )
         self.f0_min = 50
         self.f0_max = 1100

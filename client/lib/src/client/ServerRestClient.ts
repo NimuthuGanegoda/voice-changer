@@ -1,4 +1,4 @@
-import { MergeModelRequest, OnnxExporterInfo, ServerInfo, ServerSettingKey } from "../const";
+import { DeviceSetupStatus, MergeModelRequest, OnnxExporterInfo, ServerInfo, ServerSettingKey } from "../const";
 
 type FileChunk = {
     hash: number;
@@ -24,6 +24,55 @@ export class ServerRestClient {
             });
         });
         return info;
+    };
+
+    getDeviceSetupStatus = async () => {
+        const url = this.serverUrl + "/device_setup/status";
+        const info = await new Promise<DeviceSetupStatus>((resolve) => {
+            const request = new Request(url, {
+                method: "GET",
+            });
+            fetch(request).then(async (response) => {
+                const json = (await response.json()) as DeviceSetupStatus;
+                resolve(json);
+            });
+        });
+        return info;
+    };
+
+    playSound = async (filename: string) => {
+        const url = this.serverUrl + "/play_sound";
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename }),
+        });
+        return (await res.json()) as { status: string; message?: string };
+    };
+
+    tts = async (text: string, voice: string = "") => {
+        const url = this.serverUrl + "/tts";
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, voice }),
+        });
+        return (await res.json()) as { status: string; message?: string };
+    };
+
+    getSoundboardList = async () => {
+        const url = this.serverUrl + "/soundboard/list";
+        const res = await fetch(url, { method: "GET" });
+        return (await res.json()) as { status: string; files?: string[]; message?: string };
+    };
+
+    uploadSoundboardFile = async (file: File) => {
+        const url = this.serverUrl + "/soundboard/upload";
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("filename", file.name);
+        const res = await fetch(url, { method: "POST", body: formData });
+        return (await res.json()) as { status: string; message?: string };
     };
 
     getPerformance = async () => {

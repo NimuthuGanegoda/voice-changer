@@ -4,6 +4,19 @@ set -eu
 # Navigate to the voice-changer directory
 cd "$(dirname "$0")"
 
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 not found. Install Python 3.10+ first." >&2
+    exit 1
+fi
+
+if [ ! -f "venv/bin/activate" ]; then
+    echo "No venv/ found. Set it up first:" >&2
+    echo "  python3 -m venv venv" >&2
+    echo "  source venv/bin/activate" >&2
+    echo "  pip install -r server/requirements.txt" >&2
+    exit 1
+fi
+
 # Activate the existing virtual environment
 source venv/bin/activate
 

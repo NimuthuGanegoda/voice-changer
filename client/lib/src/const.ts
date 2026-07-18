@@ -327,6 +327,17 @@ type ServerAudioDevice = {
     hostAPI: string;
 };
 
+export type DeviceSetupStatus = {
+    status: string;
+    platform?: "windows" | "macos" | "linux";
+    virtualCableInstalled?: boolean;
+    cablePlaybackDevices?: { index: number; name: string }[];
+    cableRecordingDevices?: { index: number; name: string }[];
+    installUrl?: string | null;
+    hint?: string | null;
+    message?: string;
+};
+
 export type ServerInfo = VoiceChangerServerSetting & {
     // コンフィグ対象外 (getInfoで取得のみ可能な情報)
     status: string;
@@ -501,7 +512,6 @@ export type VoiceChangerClientSetting = {
     sampleRate: SampleRate; // 48000Hz
     echoCancel: boolean;
     noiseSuppression: boolean;
-    noiseSuppression2: boolean;
 
     inputGain: number;
     outputGain: number;
@@ -537,7 +547,6 @@ export const DefaultClientSettng: ClientSetting = {
         sampleRate: 48000,
         echoCancel: false,
         noiseSuppression: false,
-        noiseSuppression2: false,
         inputGain: 1.0,
         outputGain: 1.0,
         monitorGain: 1.0,

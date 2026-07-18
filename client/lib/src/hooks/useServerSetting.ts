@@ -7,6 +7,7 @@ import {
   MergeModelRequest,
   VoiceChangerType,
   DefaultServerSetting,
+  DeviceSetupStatus,
 } from "../const";
 import { VoiceChangerClient } from "../VoiceChangerClient";
 
@@ -89,6 +90,11 @@ export type ServerSettingState = {
   isUploading: boolean;
 
   getOnnx: () => Promise<OnnxExporterInfo>;
+  getDeviceSetupStatus: () => Promise<DeviceSetupStatus | null>;
+  playSound: (filename: string) => Promise<{ status: string; message?: string } | void>;
+  tts: (text: string, voice?: string) => Promise<{ status: string; message?: string } | void>;
+  getSoundboardList: () => Promise<{ status: string; files?: string[]; message?: string }>;
+  uploadSoundboardFile: (file: File) => Promise<{ status: string; message?: string } | void>;
   mergeModel: (request: MergeModelRequest) => Promise<ServerInfo>;
   updateModelDefault: () => Promise<ServerInfo>;
   updateModelInfo: (
@@ -241,6 +247,31 @@ export const useServerSetting = (
     return props.voiceChangerClient!.getOnnx();
   };
 
+  const getDeviceSetupStatus = async () => {
+    if (!props.voiceChangerClient) return null;
+    return props.voiceChangerClient.getDeviceSetupStatus();
+  };
+
+  const playSound = async (filename: string) => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.playSound(filename);
+  };
+
+  const tts = async (text: string, voice: string = "") => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.tts(text, voice);
+  };
+
+  const getSoundboardList = async () => {
+    if (!props.voiceChangerClient) return { status: "Error", files: [] };
+    return props.voiceChangerClient.getSoundboardList();
+  };
+
+  const uploadSoundboardFile = async (file: File) => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.uploadSoundboardFile(file);
+  };
+
   const mergeModel = async (request: MergeModelRequest) => {
     const serverInfo = await props.voiceChangerClient!.mergeModel(request);
     setServerSetting(serverInfo);
@@ -271,6 +302,11 @@ export const useServerSetting = (
     uploadProgress,
     isUploading,
     getOnnx,
+    getDeviceSetupStatus,
+    playSound,
+    tts,
+    getSoundboardList,
+    uploadSoundboardFile,
     mergeModel,
     updateModelDefault,
     updateModelInfo,

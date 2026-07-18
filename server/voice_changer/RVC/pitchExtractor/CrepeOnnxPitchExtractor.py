@@ -14,10 +14,11 @@ class CrepeOnnxPitchExtractor(PitchExtractor):
         (
             onnxProviders,
             onnxProviderOptions,
+            onnxSessionOptions,
         ) = DeviceManager.get_instance().getOnnxExecutionProvider(gpu)
 
         self.onnx_session = onnxruntime.InferenceSession(
-            file, providers=onnxProviders, provider_options=onnxProviderOptions
+            file, sess_options=onnxSessionOptions, providers=onnxProviders, provider_options=onnxProviderOptions
         )
 
     def extract(self, audio, pitchf, f0_up_key, sr, window, silence_front=0):

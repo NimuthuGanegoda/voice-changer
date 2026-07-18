@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../../../001_provider/001_AppStateProvider";
-import { fileSelectorAsDataURL, useIndexedDB } from "@dannadori/voice-changer-client-js";
+import { DeviceSetupStatus, fileSelectorAsDataURL, useIndexedDB } from "@dannadori/voice-changer-client-js";
 import { useGuiState } from "../001_GuiStateProvider";
 import { AUDIO_ELEMENT_FOR_PLAY_MONITOR, AUDIO_ELEMENT_FOR_PLAY_RESULT, AUDIO_ELEMENT_FOR_TEST_CONVERTED, AUDIO_ELEMENT_FOR_TEST_CONVERTED_ECHOBACK, INDEXEDDB_KEY_AUDIO_MONITR, INDEXEDDB_KEY_AUDIO_OUTPUT } from "../../../const";
 import { isDesktopApp } from "../../../const";
@@ -18,6 +18,8 @@ export const DeviceArea = (_props: DeviceAreaProps) => {
 
     const { getItem, setItem } = useIndexedDB({ clientType: null });
     const [outputRecordingStarted, setOutputRecordingStarted] = useState<boolean>(false);
+    const [deviceSetupStatus, setDeviceSetupStatus] = useState<DeviceSetupStatus | null>(null);
+    const [deviceSetupChecking, setDeviceSetupChecking] = useState<boolean>(false);
 
     // (1) Audio Mode
     const deviceModeRow = useMemo(() => {
@@ -88,6 +90,76 @@ export const DeviceArea = (_props: DeviceAreaProps) => {
             </div>
         );
     }, [serverSetting.serverSetting, serverSetting.updateServerSettings, isConverting]);
+
+    // (1-1) Virtual Mic Setup - lets any other app (Discord, Zoom, games...) use the
+    // converted voice as its microphone. Only meaningful in "server" audio mode,
+    // since that's what lets the server write into a real output device.
+    const checkDeviceSetupStatus = async () => {
+        setDeviceSetupChecking(true);
+        try {
+            const res = await serverSetting.getDeviceSetupStatus();
+            setDeviceSetupStatus(res);
+        } finally {
+            setDeviceSetupChecking(false);
+        }
+    };
+
+    useEffect(() => {
+        if (serverSetting.serverSetting.enableServerAudio == 1 && !deviceSetupStatus) {
+            checkDeviceSetupStatus();
+        }
+    }, [serverSetting.serverSetting.enableServerAudio]);
+
+    const virtualMicSetupRow = useMemo(() => {
+        if (serverSetting.serverSetting.enableServerAudio == 0 || webEdition) {
+            return <></>;
+        }
+
+        const onUseDetectedDeviceClicked = () => {
+            const device = deviceSetupStatus?.cablePlaybackDevices?.[0];
+            if (!device) return;
+            serverSetting.updateServerSettings({ ...serverSetting.serverSetting, serverOutputDeviceId: device.index });
+        };
+
+        let body: React.ReactNode;
+        if (deviceSetupChecking && !deviceSetupStatus) {
+            body = <span>Checking...</span>;
+        } else if (!deviceSetupStatus || deviceSetupStatus.status != "OK") {
+            body = <span>Could not check virtual mic status.</span>;
+        } else if (deviceSetupStatus.virtualCableInstalled) {
+            body = (
+                <>
+                    <span>Virtual mic ready.</span>
+                    <div className="config-sub-area-button" onClick={onUseDetectedDeviceClicked}>
+                        use it as output
+                    </div>
+                </>
+            );
+        } else {
+            body = (
+                <>
+                    <span>{deviceSetupStatus.hint ?? "Virtual mic not set up yet."}</span>
+                    {deviceSetupStatus.installUrl ? (
+                        <a href={deviceSetupStatus.installUrl} target="_blank" rel="noreferrer">
+                            get it
+                        </a>
+                    ) : null}
+                    <div className="config-sub-area-button" onClick={checkDeviceSetupStatus}>
+                        recheck
+                    </div>
+                </>
+            );
+        }
+
+        return (
+            <div className="config-sub-area-control">
+                <div className="config-sub-area-control-title left-padding-1">mic setup</div>
+                <div className="config-sub-area-control-field">
+                    <div className="config-sub-area-noise-container">{body}</div>
+                </div>
+            </div>
+        );
+    }, [serverSetting.serverSetting, deviceSetupStatus, deviceSetupChecking, webEdition]);
 
     // (2) Audio Input
     // キャッシュの設定は反映（たぶん、設定操作の時も起動していしまう。が問題は起こらないはず）
@@ -831,6 +903,7 @@ export const DeviceArea = (_props: DeviceAreaProps) => {
     return (
         <div className="config-sub-area">
             {deviceModeRow}
+            {virtualMicSetupRow}
             {sampleRateRow}
             {clientAudioInputRow}
             {serverAudioInputRow}

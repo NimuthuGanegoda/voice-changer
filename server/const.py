@@ -27,7 +27,7 @@ tmpdir = tempfile.TemporaryDirectory()
 SSL_KEY_DIR = os.path.join(tmpdir.name, "keys") if hasattr(sys, "_MEIPASS") else "keys"
 MODEL_DIR = os.path.join(tmpdir.name, "logs") if hasattr(sys, "_MEIPASS") else "logs"
 UPLOAD_DIR = os.path.join(tmpdir.name, "upload_dir") if hasattr(sys, "_MEIPASS") else "upload_dir"
-UPLOAD_DIR = os.path.join(tmpdir.name, "upload_dir") if hasattr(sys, "_MEIPASS") else "upload_dir"
+SOUNDBOARD_DIR = os.path.join(tmpdir.name, "soundboard") if hasattr(sys, "_MEIPASS") else os.path.join("data", "soundboard")
 
 NATIVE_CLIENT_FILE_WIN = os.path.join(sys._MEIPASS, "voice-changer-native-client.exe") if hasattr(sys, "_MEIPASS") else "voice-changer-native-client"  # type: ignore
 NATIVE_CLIENT_FILE_MAC = (

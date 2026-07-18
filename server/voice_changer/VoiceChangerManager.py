@@ -10,7 +10,7 @@ from voice_changer.Local.ServerDevice import ServerDevice, ServerDeviceCallbacks
 from voice_changer.ModelSlotManager import ModelSlotManager
 from voice_changer.RVC.RVCModelMerger import RVCModelMerger
 from voice_changer.VoiceChanger import VoiceChanger
-from const import STORED_SETTING_FILE, UPLOAD_DIR, StaticSlot
+from const import STORED_SETTING_FILE, UPLOAD_DIR, SOUNDBOARD_DIR, StaticSlot
 from voice_changer.VoiceChangerV2 import VoiceChangerV2
 from voice_changer.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
 from voice_changer.utils.Soundboard import Soundboard
@@ -80,7 +80,7 @@ class VoiceChangerManager(ServerDeviceCallbacks):
 
         self.modelSlotManager = ModelSlotManager.get_instance(self.params.model_dir)
         self.soundboard = Soundboard()
-        os.makedirs(os.path.join("data", "soundboard"), exist_ok=True)
+        os.makedirs(SOUNDBOARD_DIR, exist_ok=True)
         # スタティックな情報を収集
         self.gpus: list[GPUInfo] = self._get_gpuInfos()
 
@@ -388,7 +388,7 @@ class VoiceChangerManager(ServerDeviceCallbacks):
 
     def play_sound(self, filename: str):
         filename = os.path.basename(filename)  # reject path traversal
-        path = os.path.join("data", "soundboard", filename)
+        path = os.path.join(SOUNDBOARD_DIR, filename)
         logger.info(f"[Voice Changer] Playing sound: {path}")
         return self.soundboard.add_sound(path)
 

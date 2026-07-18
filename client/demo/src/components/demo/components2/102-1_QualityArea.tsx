@@ -129,21 +129,6 @@ export const QualityArea = (props: QualityAreaProps) => {
                                 />{" "}
                                 <span>Sup1</span>
                             </div>
-                            <div className="config-sub-area-noise-checkbox-container">
-                                <input
-                                    type="checkbox"
-                                    disabled={serverSetting.serverSetting.enableServerAudio != 0}
-                                    checked={setting.voiceChangerClientSetting.noiseSuppression2}
-                                    onChange={(e) => {
-                                        try {
-                                            setVoiceChangerClientSetting({ ...setting.voiceChangerClientSetting, noiseSuppression2: e.target.checked });
-                                        } catch (e) {
-                                            console.error(e);
-                                        }
-                                    }}
-                                />{" "}
-                                <span>Sup2</span>
-                            </div>
                         </div>
                     </div>
                 </div>
