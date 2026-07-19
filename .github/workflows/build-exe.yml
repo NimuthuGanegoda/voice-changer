@@ -2,9 +2,15 @@ name: Build Windows EXE
 
 on:
   push:
+    branches:
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
+
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -53,10 +59,25 @@ jobs:
         run: |
           makensis "-DVERSION=${{ steps.version.outputs.version }}" installer\VoiceChanger.nsi
 
-      - name: Release
+      - name: Release (tagged version)
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          files: |
+            dist/VoiceChanger.exe
+            dist/VoiceChangerSetup.exe
+
+      - name: Release (rolling build from master)
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/master'
+        with:
+          tag_name: latest-build
+          name: "Latest build (auto, unstable)"
+          body: |
+            Automatic build from the latest push to master (commit ${{ github.sha }}).
+            This is not a stable/versioned release - it's overwritten on every push.
+            For a stable version, use a tagged release instead.
+          prerelease: true
           files: |
             dist/VoiceChanger.exe
             dist/VoiceChangerSetup.exe
