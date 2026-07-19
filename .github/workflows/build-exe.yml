@@ -57,7 +57,11 @@ jobs:
 
       - name: Build installer
         run: |
-          makensis "-DVERSION=${{ steps.version.outputs.version }}" installer\VoiceChanger.nsi
+          $makensis = Get-ChildItem -Path "C:\Program Files*\NSIS\makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makensis) { $makensis = (Get-Command makensis -ErrorAction SilentlyContinue).Source }
+          if (-not $makensis) { throw "makensis.exe not found after 'choco install nsis' - install location may have changed." }
+          Write-Host "Using $makensis"
+          & $makensis "-DVERSION=${{ steps.version.outputs.version }}" installer\VoiceChanger.nsi
 
       - name: Release (tagged version)
         uses: softprops/action-gh-release@v2
