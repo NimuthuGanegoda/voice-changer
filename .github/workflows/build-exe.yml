@@ -37,8 +37,26 @@ jobs:
         run: |
           pyinstaller VoiceChanger.spec --noconfirm
 
+      - name: Resolve installer version
+        id: version
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $parts = ($tag -split '\.') + @('0', '0', '0', '0')
+          $version = ($parts[0..3] -join '.')
+          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') { $version = "0.0.0.0" }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build installer
+        run: |
+          makensis "-DVERSION=${{ steps.version.outputs.version }}" installer\VoiceChanger.nsi
+
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/VoiceChanger.exe
+          files: |
+            dist/VoiceChanger.exe
+            dist/VoiceChangerSetup.exe
