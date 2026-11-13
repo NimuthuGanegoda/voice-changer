@@ -14,17 +14,16 @@
   const state = {
     enabled: false,
     bridgeReady: false,
+    serverUrl: "",
     activeSessions: 0,
   };
 
   let reqSeq = 0;
-  const pendingBySeq = new Map(); // seq -> session
+  const pendingBySeq = new Map(); // seq -> { session, sentAt }
+  const activeSessions = new Set();
 
-  // Locked onto whichever token the FIRST trusted VC_CONFIG carries. Since both
-  // content scripts run at document_start (before the page's own <script> tags),
-  // that first message is only observable by us and content-bridge.js - a page
-  // script loading later can neither read this token nor forge a VC_CONFIG
-  // early enough to have us lock onto a fake one.
+  // Locked onto the first VC_CONFIG token. Page scripts can observe postMessage,
+  // so this is message hygiene only; the isolated bridge enforces the enable switch.
   let bridgeToken = null;
 
   // ---- messaging with the isolated-world bridge ----
@@ -34,23 +33,30 @@
     if (d.type === "VC_CONFIG") {
       if (bridgeToken === null) bridgeToken = d.token;
       else if (d.token !== bridgeToken) return; // forged after the real handshake
+      if (state.serverUrl !== d.serverUrl) {
+        pendingBySeq.clear();
+        for (const session of activeSessions) session.reset();
+      }
+      state.serverUrl = d.serverUrl;
       state.enabled = !!d.enabled;
       state.bridgeReady = true;
     } else if (d.type === "VC_AUDIO_RES") {
       if (d.token !== bridgeToken) return;
-      const session = pendingBySeq.get(d.seq);
+      const pending = pendingBySeq.get(d.seq);
       pendingBySeq.delete(d.seq);
-      if (session && d.buf) session.onConverted(new Int16Array(d.buf));
+      const session = pending && pending.session;
+      if (session && d.buf instanceof ArrayBuffer && d.buf.byteLength % 2 === 0) session.onConverted(new Int16Array(d.buf));
     }
   });
   window.postMessage({ __vcclient: true, type: "VC_MAIN_READY" }, "*");
 
   // ---- resampling helpers (linear; cheap and good enough for speech) ----
   function resample(f32, fromRate, toRate) {
-    if (fromRate === toRate) return f32;
-    const outLen = Math.round((f32.length * toRate) / fromRate);
+    if (fromRate === toRate || f32.length === 0) return f32;
+    const outLen = Math.max(1, Math.round((f32.length * toRate) / fromRate));
     const out = new Float32Array(outLen);
-    const ratio = (f32.length - 1) / Math.max(1, outLen - 1);
+    if (f32.length === 1) return out.fill(f32[0]);
+    const ratio = fromRate / toRate;
     for (let i = 0; i < outLen; i++) {
       const pos = i * ratio;
       const i0 = Math.floor(pos);
@@ -83,19 +89,19 @@
     const dest = ctx.createMediaStreamDestination();
 
     // Jitter buffer of converted samples at ctx.sampleRate.
-    let playBuffer = new Float32Array(0);
-    const maxBuffered = CHUNK_SIZE * 6; // drop backlog beyond ~0.5s to bound latency
+    const playBuffer = new globalThis.VCClientPcmRingBuffer(Math.ceil(ctx.sampleRate * 0.5));
 
     const session = {
       onConverted(i16) {
         let f32 = int16ToFloat(i16);
         f32 = resample(f32, SERVER_RATE, ctx.sampleRate);
-        const merged = new Float32Array(playBuffer.length + f32.length);
-        merged.set(playBuffer);
-        merged.set(f32, playBuffer.length);
-        playBuffer = merged.length > maxBuffered ? merged.subarray(merged.length - maxBuffered) : merged;
+        playBuffer.push(f32);
       },
+      reset() { playBuffer.clear(); },
       stop() {
+        if (!activeSessions.has(session)) return;
+        activeSessions.delete(session);
+        for (const [seq, pending] of pendingBySeq) if (pending.session === session) pendingBySeq.delete(seq);
         try { sp.disconnect(); src.disconnect(); ctx.close(); } catch (e) {}
         realStream.getTracks().forEach((t) => t.stop());
         state.activeSessions--;
@@ -105,8 +111,10 @@
     sp.onaudioprocess = (ev) => {
       const input = ev.inputBuffer.getChannelData(0);
       const i16 = floatToInt16(resample(input, ctx.sampleRate, SERVER_RATE));
+      const now = Date.now();
+      for (const [key, pending] of pendingBySeq) if (now - pending.sentAt > 2000) pendingBySeq.delete(key);
       const seq = ++reqSeq;
-      pendingBySeq.set(seq, session);
+      pendingBySeq.set(seq, { session, sentAt: now });
       if (pendingBySeq.size > 20) {
         // Server not answering; forget oldest so the map does not grow forever.
         const oldest = pendingBySeq.keys().next().value;
@@ -115,17 +123,13 @@
       window.postMessage({ __vcclient: true, token: bridgeToken, type: "VC_AUDIO_REQ", seq, buf: i16.buffer }, "*", [i16.buffer]);
 
       const output = ev.outputBuffer.getChannelData(0);
-      if (playBuffer.length >= output.length) {
-        output.set(playBuffer.subarray(0, output.length));
-        playBuffer = playBuffer.slice(output.length);
-      } else {
-        output.fill(0);
-      }
+      playBuffer.readInto(output);
     };
 
     src.connect(sp);
     sp.connect(dest);
     state.activeSessions++;
+    activeSessions.add(session);
 
     // End the session when the site stops the virtual track.
     const vTrack = dest.stream.getAudioTracks()[0];
@@ -157,12 +161,15 @@
       label: VIRTUAL_LABEL,
       toJSON() { return { deviceId: this.deviceId, groupId: this.groupId, kind: this.kind, label: this.label }; },
     };
-    return [virtual, ...devices];
+    return state.enabled ? [virtual, ...devices] : devices;
   };
 
   MediaDevices.prototype.getUserMedia = async function (constraints) {
     const audioReq = constraints && constraints.audio;
-    const useVirtual = audioReq && (state.enabled || wantsVirtualDevice(audioReq));
+    if (audioReq && wantsVirtualDevice(audioReq) && !state.enabled) {
+      throw new DOMException("VCClient virtual microphone is disabled for this tab", "NotFoundError");
+    }
+    const useVirtual = state.enabled && audioReq;
     if (!useVirtual) return origGetUserMedia.call(this, constraints);
 
     // Real mic for capture: same constraints minus our fake deviceId.
@@ -170,11 +177,18 @@
     if (realAudio !== true && wantsVirtualDevice(realAudio)) delete realAudio.deviceId;
     const realStream = await origGetUserMedia.call(this, { audio: realAudio });
 
-    const virtualStream = createSession(realStream);
-    if (constraints.video) {
-      const videoStream = await origGetUserMedia.call(this, { video: constraints.video });
-      videoStream.getVideoTracks().forEach((t) => virtualStream.addTrack(t));
+    let virtualStream;
+    try {
+      virtualStream = createSession(realStream);
+      if (constraints.video) {
+        const videoStream = await origGetUserMedia.call(this, { video: constraints.video });
+        videoStream.getVideoTracks().forEach((t) => virtualStream.addTrack(t));
+      }
+      return virtualStream;
+    } catch (error) {
+      if (virtualStream) virtualStream.getTracks().forEach(t => t.stop());
+      realStream.getTracks().forEach(t => t.stop());
+      throw error;
     }
-    return virtualStream;
   };
 })();

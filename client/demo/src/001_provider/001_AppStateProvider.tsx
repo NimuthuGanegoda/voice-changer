@@ -1,5 +1,4 @@
 import { ClientState } from "@dannadori/voice-changer-client-js";
-import { VoiceChangerJSClient } from "@dannadori/voice-changer-js";
 import React, { useContext, useEffect, useRef } from "react";
 import { ReactNode } from "react";
 import { useVCClient } from "../001_globalHooks/001_useVCClient";

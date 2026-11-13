@@ -1,48 +1,6 @@
-# # apt-get update
-# # apt-get install -y emacs mlocate wget git curl gcc g++ make unzip
-# # wget https://repo.anaconda.com/archive/Anaconda3-2022.10-Linux-x86_64.sh
-# # bash Anaconda3-2022.10-Linux-x86_64.sh
-
-uvicorn==0.50.2
-pyOpenSSL==26.3.0
-# capped: latest numpy/scipy/onnxruntime require Python>=3.11, but fairseq (needed for
-# the RVC hubert feature-extraction step, see FairseqHubert.py) is unmaintained and hard-
-# broken on Python 3.11+ (a dataclass rule change, not a version-pin issue). Staying on
-# Python 3.10 and pinning each package to its newest release that still ships a cp310 wheel.
+-r requirements-base.txt
+# Default runtime: Python 3.10. The ONNX embedder does not require Fairseq.
 numpy==2.2.6
-# torch/torchaudio must be version-matched: torchaudio's C-extension is built
-# against an exact torch release. torch has newer releases (2.12.x) with no
-# matching torchaudio, so both are pinned to their latest common version.
-torch==2.11.0
-torchaudio==2.11.0
-resampy==0.4.3
-python-socketio==5.16.3
-fastapi==0.139.0
-python-multipart==0.0.32
-# ONNX Runtime: DirectML build on Windows covers AMD/Intel/NVIDIA (DX12) GPUs plus CPU
-# in a single wheel. On Linux the CUDA build (falls back to CPU when no GPU); macOS
-# gets the CPU/CoreML build.
 onnxruntime-directml==1.23.0; sys_platform == 'win32'
 onnxruntime-gpu==1.23.2; sys_platform == 'linux'
 onnxruntime==1.23.2; sys_platform == 'darwin'
-scipy==1.15.3
-matplotlib==3.10.9
-websockets==16.0
-faiss-cpu==1.14.3
-torchcrepe==0.0.24
-librosa==0.11.0
-gin==0.1.006
-gin_config==0.5.0
-einops==0.8.2
-local_attention==1.11.2
-sounddevice==0.5.5
-dataclasses_json==0.6.7
-onnxsim==0.6.5
-torchfcpe==0.0.4
-pyttsx3==2.99
-# Missing from this file entirely until now - a fresh install couldn't start the
-# server at all (RVC's DioPitchExtractor imports it unconditionally). 0.3.3 (the
-# version referenced in docker_vcclient/Dockerfile) fails to build against
-# modern Cython (json.dumps on a PosixPath in generated module metadata);
-# 0.3.5 builds cleanly with no special install flags.
-pyworld==0.3.5

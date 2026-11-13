@@ -8,7 +8,7 @@ import torch
 from data.ModelSlot import RVCModelSlot
 from mods.log_control import VoiceChangaerLogger
 
-from voice_changer.RVC.RVCSettings import RVCSettings
+from voice_changer.RVC.RVCSettings import RVCSettings, validate_rvc_setting
 from voice_changer.RVC.embedder.EmbedderManager import EmbedderManager
 from voice_changer.utils.VoiceChangerModel import (
     AudioInOut,
@@ -62,9 +62,9 @@ class RVCr2(VoiceChangerModel):
         # pipelineの生成
         try:
             self.pipeline = createPipeline(self.params, self.slotInfo, self.settings.gpu, self.settings.f0Detector)
-        except PipelineCreateException as e:  # NOQA
-            logger.error("[Voice Changer] pipeline create failed. check your model is valid.")
-            return
+        except PipelineCreateException:
+            logger.exception("[Voice Changer] pipeline create failed. check your model is valid.")
+            raise
 
         # その他の設定
         self.settings.tran = self.slotInfo.defaultTune
@@ -79,6 +79,7 @@ class RVCr2(VoiceChangerModel):
 
     def update_settings(self, key: str, val: int | float | str):
         logger.info(f"[Voice Changer][RVC]: update_settings {key}:{val}")
+        validate_rvc_setting(key, val)
         if key in self.settings.intData:
             setattr(self.settings, key, int(val))
             if key == "gpu":

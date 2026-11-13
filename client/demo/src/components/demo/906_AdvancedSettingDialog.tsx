@@ -1,11 +1,31 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useGuiState } from "./001_GuiStateProvider";
 import { useAppState } from "../../001_provider/001_AppStateProvider";
 import { CrossFadeOverlapSize, Protocol } from "@dannadori/voice-changer-client-js";
 
 export const AdvancedSettingDialog = () => {
     const guiState = useGuiState();
-    const { setting, serverSetting, setWorkletNodeSetting, setWorkletSetting, setVoiceChangerClientSetting } = useAppState();
+    const { setting, serverSetting, setServerUrl, setWorkletNodeSetting, setWorkletSetting, setVoiceChangerClientSetting } = useAppState();
+    const [connectionUrl, setConnectionUrl] = useState(window.location.origin);
+    const [accessToken, setAccessToken] = useState("");
+    const [connectionError, setConnectionError] = useState("");
+    const connectionRow = (
+        <div className="advanced-setting-container-row">
+            <div className="advanced-setting-container-row-title">Server connection</div>
+            <div className="advanced-setting-container-row-field">
+                <input aria-label="Server URL" type="url" value={connectionUrl} onChange={e => setConnectionUrl(e.target.value)} />
+                <input aria-label="Access token" type="password" autoComplete="off" placeholder="Access token (remote servers)" value={accessToken} onChange={e => setAccessToken(e.target.value)} />
+                <button onClick={async () => {
+                    try {
+                        setConnectionError("");
+                        setServerUrl(connectionUrl, false, accessToken);
+                        await serverSetting.reloadServerInfo();
+                    } catch (error) { setConnectionError(String(error)); }
+                }}>Connect</button>
+                {connectionError && <div role="alert">{connectionError}</div>}
+            </div>
+        </div>
+    );
     const dialog = useMemo(() => {
         const closeButtonRow = (
             <div className="body-row split-3-4-3 left-padding-1">
@@ -214,6 +234,7 @@ export const AdvancedSettingDialog = () => {
         );
         const content = (
             <div className="advanced-setting-container">
+                {connectionRow}
                 {protocolRow}
                 {crossfaceRow}
                 {trancateRow}
@@ -233,6 +254,6 @@ export const AdvancedSettingDialog = () => {
                 </div>
             </div>
         );
-    }, [serverSetting.serverSetting, serverSetting.updateServerSettings, setting.workletNodeSetting, setWorkletNodeSetting, setting.workletSetting, setWorkletSetting]);
+    }, [serverSetting.serverSetting, serverSetting.updateServerSettings, setting.workletNodeSetting, setWorkletNodeSetting, setting.workletSetting, setWorkletSetting, connectionUrl, accessToken, connectionError, setServerUrl, serverSetting.reloadServerInfo]);
     return dialog;
 };

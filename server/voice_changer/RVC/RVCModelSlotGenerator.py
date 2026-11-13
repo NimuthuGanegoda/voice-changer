@@ -1,3 +1,5 @@
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
+from voice_changer.RVC.embedder.EmbedderNames import normalize_embedder
 import os
 from const import EnumInferenceTypes
 from dataclasses import asdict
@@ -39,7 +41,7 @@ class RVCModelSlotGenerator(ModelSlotGenerator):
 
     @classmethod
     def _setInfoByPytorch(cls, modelPath: str, slot: RVCModelSlot):
-        cpt = torch.load(modelPath, map_location="cpu")
+        cpt = load_rvc_checkpoint(modelPath)
         config_len = len(cpt["config"])
         version = cpt.get("version", "v1")
 
@@ -52,18 +54,7 @@ class RVCModelSlotGenerator(ModelSlotGenerator):
             slot.embOutputLayer = cpt["embedder_output_layer"] if "embedder_output_layer" in cpt else 9
             slot.useFinalProj = False
 
-            slot.embedder = cpt["embedder_name"]
-            if slot.embedder.endswith("768"):
-                slot.embedder = slot.embedder[:-3]
-
-            # if slot.embedder == "hubert":
-            #     slot.embedder = "hubert"
-            # elif slot.embedder == "contentvec":
-            #     slot.embedder = "contentvec"
-            # elif slot.embedder == "hubert_jp":
-            #     slot.embedder = "hubert_jp"
-            else:
-                raise RuntimeError("[Voice Changer][setInfoByPytorch] unknown embedder")
+            slot.embedder = normalize_embedder(cpt["embedder_name"])
 
         elif config_len == 18:
             # Original RVC
@@ -103,9 +94,7 @@ class RVCModelSlotGenerator(ModelSlotGenerator):
             else:
                 print(f"[Voice Changer] DDPN Model(pyTorch): ch:{slot.embChannels}, L:{slot.embOutputLayer}, FP:{slot.useFinalProj}")
 
-            slot.embedder = cpt["embedder_name"]
-            if slot.embedder.endswith("768"):
-                slot.embedder = slot.embedder[:-3]
+            slot.embedder = normalize_embedder(cpt["embedder_name"])
 
             if "speaker_info" in cpt.keys():
                 for k, v in cpt["speaker_info"].items():

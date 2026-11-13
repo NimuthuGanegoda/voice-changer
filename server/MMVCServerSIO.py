@@ -14,6 +14,7 @@ from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 
 import uvicorn
 from mods.ssl import create_self_signed_cert
+from mods.auth import is_loopback_host
 from voice_changer.VoiceChangerManager import VoiceChangerManager
 from sio.MMVC_SocketIOApp import MMVC_SocketIOApp
 from restapi.MMVC_Rest import MMVC_Rest
@@ -59,6 +60,7 @@ def setupArgParser():
 
     parser.add_argument("--model_dir", type=str, default="model_dir", help="path to model files")
     parser.add_argument("--sample_mode", type=str, default="production", help="rvc_sample_mode")
+    parser.add_argument("--no_download", action="store_true", help="start without contacting model/catalog servers; use already cached weights and models")
 
     parser.add_argument("--content_vec_500", type=str, default="pretrain/checkpoint_best_legacy_500.pt", help="path to content_vec_500 model(pytorch)")
     parser.add_argument("--content_vec_500_onnx", type=str, default="pretrain/content_vec_500.onnx", help="path to content_vec_500 model(onnx)")
@@ -73,8 +75,9 @@ def setupArgParser():
     parser.add_argument("--rmvpe", type=str, default="pretrain/rmvpe.pt", help="path to rmvpe")
     parser.add_argument("--rmvpe_onnx", type=str, default="pretrain/rmvpe.onnx", help="path to rmvpe onnx")
 
-    parser.add_argument("--host", type=str, default='127.0.0.1', help="IP address of the network interface to listen for HTTP connections. Specify 0.0.0.0 to listen on all interfaces. WARNING: the Origin allow-list (see mods/origins.py) is this server's only auth - a request with no Origin header (curl, non-browser clients) bypasses it, so binding to 0.0.0.0 exposes upload/tts/play_sound to anything that can reach this host, not just this machine.")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Listen address. Non-loopback addresses require --access-token or VCCLIENT_ACCESS_TOKEN.")
     parser.add_argument("--allowed-origins", action='append', default=[], help="List of URLs to allow connection from, i.e. https://example.com. Allows http(s)://127.0.0.1:{port} and http(s)://localhost:{port} by default.")
+    parser.add_argument("--access-token", default=os.getenv("VCCLIENT_ACCESS_TOKEN"), help="API token (or VCCLIENT_ACCESS_TOKEN). Required for non-loopback hosts; use at least 16 random characters.")
 
     return parser
 
@@ -119,6 +122,7 @@ voiceChangerParams = VoiceChangerParams(
     rmvpe_onnx=args.rmvpe_onnx,
     sample_mode=args.sample_mode,
     whisper_tiny=args.whisper_tiny,
+    offline=args.no_download,
 )
 vcparams = VoiceChangerParamsManager.get_instance()
 vcparams.setParams(voiceChangerParams)
@@ -127,6 +131,10 @@ printMessage(f"Booting PHASE :{__name__}", level=2)
 
 HOST = args.host
 PORT = args.p
+if not is_loopback_host(HOST) and not args.access_token:
+    parser.error("--access-token (or VCCLIENT_ACCESS_TOKEN) is required when listening on a non-loopback host")
+if args.access_token and (len(args.access_token) < 16 or any(c.isspace() or c in (";", ",", "\\", '"') for c in args.access_token)):
+    parser.error("--access-token must be at least 16 characters without whitespace, quotes, commas or semicolons")
 
 
 def localServer(logLevel: str = "critical", key_path: str | None = None, cert_path: str | None = None):
@@ -148,8 +156,8 @@ if __name__ == "MMVCServerSIO":
     mp.freeze_support()
 
     voiceChangerManager = VoiceChangerManager.get_instance(voiceChangerParams)
-    app_fastapi = MMVC_Rest.get_instance(voiceChangerManager, voiceChangerParams, args.allowed_origins, PORT)
-    app_socketio = MMVC_SocketIOApp.get_instance(app_fastapi, voiceChangerManager, args.allowed_origins, PORT)
+    app_fastapi = MMVC_Rest.get_instance(voiceChangerManager, voiceChangerParams, args.allowed_origins, PORT, args.access_token)
+    app_socketio = MMVC_SocketIOApp.get_instance(app_fastapi, voiceChangerManager, args.allowed_origins, PORT, args.access_token)
 
 
 if __name__ == "__mp_main__":
@@ -164,18 +172,15 @@ if __name__ == "__main__":
     printMessage(f"PYTHON:{sys.version}", level=2)
     # printMessage("Voice Changerを起動しています。", level=2)
     printMessage("Activating the Voice Changer.", level=2)
-    # ダウンロード(Weight)
-    try:
-        downloadWeight(voiceChangerParams)
-    except WeightDownladException:
-        # printMessage("RVC用のモデルファイルのダウンロードに失敗しました。", level=2)
-        printMessage("failed to download weight for rvc", level=2)
-
-    # ダウンロード(Sample)
-    try:
-        downloadInitialSamples(args.sample_mode, args.model_dir)
-    except Exception as e:
-        printMessage(f"[Voice Changer] loading sample failed {e}", level=2)
+    if not args.no_download:
+        try:
+            downloadWeight(voiceChangerParams)
+        except WeightDownladException as exc:
+            printMessage(f"failed to download required weights: {exc}", level=2)
+        try:
+            downloadInitialSamples(args.sample_mode, args.model_dir)
+        except Exception as exc:
+            printMessage(f"loading samples failed: {exc}", level=2)
 
     # PORT = args.p
 

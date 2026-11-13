@@ -1,64 +1,86 @@
 import os
+import re
 import shutil
+import tempfile
+from pathlib import Path
+
 from fastapi import UploadFile
 
+from voice_changer.utils.ModelPaths import resolve_under, safe_filename
 
 _WINDOWS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
+_UPLOAD_ID = re.compile(r"^[a-zA-Z0-9_-]{8,64}$")
+MAX_CHUNKS = 100_000  # 100 GiB at the client's 1 MiB chunk size.
 
 
 def sanitize_filename(filename: str) -> str:
-    # os.path.basename() on the *running* OS's separator strips traversal
-    # components for that OS, but a Linux server still treats a Windows-style
-    # "..\\..\\x" as one literal filename with backslashes in it rather than
-    # stripping it - normalize both separators before taking the basename.
-    safe_filename = os.path.basename(filename.replace("\\", "/"))
-    safe_filename = safe_filename.lstrip(".") or "upload"
-
-    file_root, file_ext = os.path.splitext(safe_filename)
-    if file_root.upper() in _WINDOWS_RESERVED_NAMES:
-        file_root = f"_{file_root}"
-        safe_filename = file_root + file_ext
-
-    max_length = 255
-    if len(safe_filename) > max_length:
-        safe_filename = file_root[: max_length - len(file_ext)] + file_ext
-
-    return safe_filename
+    # Uploads are stored flat. Logical model directories are handled separately
+    # by LoadModelParams and are never accepted as physical upload paths.
+    safe = os.path.basename(filename.replace("\\", "/")).lstrip(".") or "upload"
+    root, ext = os.path.splitext(safe)
+    if root.upper() in _WINDOWS_RESERVED_NAMES:
+        root = f"_{root}"
+    safe = root[: max(1, 200 - len(ext))] + ext[:55]
+    return safe_filename(safe)
 
 
-def upload_file(upload_dirname: str, file: UploadFile, filename: str):
-    if file and filename:
-        fileobj = file.file
-        filename = sanitize_filename(filename)
-        target_path = os.path.join(upload_dirname, filename)
-        target_dir = os.path.dirname(target_path)
-        os.makedirs(target_dir, exist_ok=True)
-        upload_dir = open(target_path, "wb+")
-        shutil.copyfileobj(fileobj, upload_dir)
-        upload_dir.close()
-
-        return {"status": "OK", "msg": f"uploaded files {filename} "}
-    return {"status": "ERROR", "msg": "uploaded file is not found."}
+def validate_upload_id(upload_id: str) -> str:
+    if not isinstance(upload_id, str) or not _UPLOAD_ID.fullmatch(upload_id):
+        raise ValueError("invalid upload id")
+    return upload_id
 
 
-def concat_file_chunks(upload_dirname: str, filename: str, chunkNum: int, dest_dirname: str):
-    filename = sanitize_filename(filename)
-    target_path = os.path.join(upload_dirname, filename)
-    target_dir = os.path.dirname(target_path)
-    os.makedirs(target_dir, exist_ok=True)
-    if os.path.exists(target_path):
-        os.remove(target_path)
-    with open(target_path, "ab") as out:
-        for i in range(chunkNum):
-            chunkName = f"{filename}_{i}"
-            chunk_file_path = os.path.join(upload_dirname, chunkName)
-            stored_chunk_file = open(chunk_file_path, "rb")
-            out.write(stored_chunk_file.read())
-            stored_chunk_file.close()
-            os.remove(chunk_file_path)
-        out.close()
-    return {"status": "OK", "msg": f"concat files {out} "}
+def upload_file(upload_dirname: str, file: UploadFile, filename: str, upload_id: str | None = None):
+    if file is None or not filename:
+        raise ValueError("uploaded file is not found")
+    name = validate_upload_id(upload_id) if upload_id else sanitize_filename(filename)
+    target = resolve_under(upload_dirname, name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".upload-", dir=target.parent)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            shutil.copyfileobj(file.file, out, length=1024 * 1024)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return {"status": "OK", "msg": f"uploaded file {filename}", "name": name}
+
+
+def concat_file_chunks(upload_dirname: str, filename: str, chunkNum: int, dest_dirname: str, original_filename: str | None = None):
+    if isinstance(chunkNum, bool) or not isinstance(chunkNum, int) or not 1 <= chunkNum <= MAX_CHUNKS:
+        raise ValueError(f"chunk count must be between 1 and {MAX_CHUNKS}")
+    # New clients use an opaque id for every chunk and the final file. Legacy
+    # clients use the sanitized filename prefix. Both layouts remain supported.
+    try:
+        prefix = validate_upload_id(filename)
+        opaque = True
+    except ValueError:
+        prefix, opaque = sanitize_filename(filename), False
+    ext = os.path.splitext(sanitize_filename(original_filename))[1] if original_filename else ("" if opaque else os.path.splitext(prefix)[1])
+    stored_name = f"{prefix}{ext}" if opaque else prefix
+    target = resolve_under(dest_dirname, stored_name)
+    chunks = [resolve_under(upload_dirname, f"{prefix}_{i}", must_exist=True) for i in range(chunkNum)]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".concat-", dir=target.parent)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            for chunk in chunks:
+                with chunk.open("rb") as source:
+                    shutil.copyfileobj(source, out, length=1024 * 1024)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    # Keep chunks on failure so a retry is possible; remove only after commit.
+    for chunk in chunks:
+        chunk.unlink()
+    return {"status": "OK", "msg": f"concatenated {stored_name}", "name": stored_name}

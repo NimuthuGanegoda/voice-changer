@@ -1,4 +1,5 @@
 import logging
+import sys
 import traceback
 
 
@@ -45,7 +46,9 @@ class VoiceChangaerLogger:
 
         # logging.basicConfig(filename='myapp.log', level=logging.INFO)
         # logging.basicConfig(level=logging.NOTSET)
-        logging.root.handlers = [NullHandler()]
+        # Do not remove handlers installed by the host application or test runner.
+        if not logging.root.handlers:
+            logging.root.addHandler(logging.NullHandler())
 
         logger = logging.getLogger("fairseq.tasks.hubert_pretraining")
         logger.addFilter(UvicornSuppressFilter())

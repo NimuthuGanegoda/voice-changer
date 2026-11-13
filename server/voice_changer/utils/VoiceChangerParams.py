@@ -17,3 +17,4 @@ class VoiceChangerParams:
     rmvpe: str
     rmvpe_onnx: str
     whisper_tiny: str
+    offline: bool = False

@@ -1,3 +1,4 @@
+from voice_changer.utils.TrustedAssets import load_numpy_dict
 import numpy as np
 import time
 import os
@@ -115,11 +116,11 @@ class DiffusionSVC:
     def set_spk_emb_dict(self, spk_emb_dict_or_path):  # 从路径加载或直接设置
         if spk_emb_dict_or_path is None:
             return None
-        if spk_emb_dict_or_path is dict:
+        if isinstance(spk_emb_dict_or_path, dict):
             self.spk_emb_dict = spk_emb_dict_or_path
             print(f" [INFO] Load spk_emb_dict from {spk_emb_dict_or_path}")
         else:
-            self.spk_emb_dict = np.load(spk_emb_dict_or_path, allow_pickle=True).item()
+            self.spk_emb_dict = load_numpy_dict(spk_emb_dict_or_path)
             print(f" [INFO] Load spk_emb_dict from {spk_emb_dict_or_path}")
 
     @torch.no_grad()

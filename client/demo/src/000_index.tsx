@@ -13,7 +13,7 @@ import { AppRootProvider, useAppRoot } from "./001_provider/001_AppRootProvider"
 import { useIndexedDB } from "@dannadori/voice-changer-client-js";
 import { Demo } from "./components/demo/010_Demo";
 import { useMessageBuilder } from "./hooks/useMessageBuilder";
-import { removeDB as webDBRemove } from "@dannadori/voice-changer-js";
+import { removeDB as webDBRemove } from "./legacyVoiceChanger";
 
 library.add(fas, far, fab);
 

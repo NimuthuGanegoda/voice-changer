@@ -239,13 +239,13 @@ export const FileUploaderScreen = (props: FileUploaderScreenProps) => {
                                 if (!uploadSetting) {
                                     return;
                                 }
-                                if (serverSetting.uploadProgress != 0) {
+                                if (serverSetting.isUploading) {
                                     return;
                                 }
                                 if (checkModelSetting(uploadSetting)) {
                                     serverSetting.uploadModel(uploadSetting).then(() => {
                                         props.backToSlotManager();
-                                    });
+                                    }).catch(error => alert(String(error)));
                                 } else {
                                     const errorMessage = messageBuilderState.getMessage(__filename, "alert-model-file");
                                     alert(errorMessage);
@@ -258,7 +258,7 @@ export const FileUploaderScreen = (props: FileUploaderScreenProps) => {
                 </div>
             </div>
         );
-    }, [props.screen, props.targetIndex, voiceChangerType, uploadSetting, serverSetting.uploadModel, serverSetting.uploadProgress]);
+    }, [props.screen, props.targetIndex, voiceChangerType, uploadSetting, serverSetting.uploadModel, serverSetting.uploadProgress, serverSetting.isUploading]);
 
     return screen;
 };

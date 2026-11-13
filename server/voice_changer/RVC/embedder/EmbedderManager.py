@@ -1,3 +1,6 @@
+from pathlib import Path
+import threading
+
 from torch import device
 
 from const import EmbedderType
@@ -13,54 +16,44 @@ from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 class EmbedderManager:
     currentEmbedder: Embedder | None = None
     params: VoiceChangerParams
+    _lock = threading.RLock()
 
     @classmethod
     def initialize(cls, params: VoiceChangerParams):
-        cls.params = params
+        with cls._lock:
+            cls.params = params
+            cls.currentEmbedder = None
 
     @classmethod
-    def getEmbedder(cls, embederType: EmbedderType, isHalf: bool, dev: device) -> Embedder:
-        if cls.currentEmbedder is None:
-            print("[Voice Changer] generate new embedder. (no embedder)")
-            cls.currentEmbedder = cls.loadEmbedder(embederType, isHalf, dev)
-        elif cls.currentEmbedder.matchCondition(embederType) is False:
-            print("[Voice Changer] generate new embedder. (not match)")
-            cls.currentEmbedder = cls.loadEmbedder(embederType, isHalf, dev)
-        else:
-            print("[Voice Changer] generate new embedder. (anyway)")
-            cls.currentEmbedder = cls.loadEmbedder(embederType, isHalf, dev)
-
-            # cls.currentEmbedder.setDevice(dev)
-            # cls.currentEmbedder.setHalf(isHalf)
-        return cls.currentEmbedder
+    def getEmbedder(cls, embedderType: EmbedderType, isHalf: bool, dev: device) -> Embedder:
+        with cls._lock:
+            current = cls.currentEmbedder
+            if current is not None and current.matchCondition(embedderType) and Path(current.file).resolve() == Path(cls._weight_path(embedderType)).resolve() and current.dev == dev and current.isHalf == isHalf:
+                return current
+            # Publish only a fully initialized embedder; retain the old one on error.
+            cls.currentEmbedder = cls.loadEmbedder(embedderType, isHalf, dev)
+            return cls.currentEmbedder
 
     @classmethod
-    def loadEmbedder(cls, embederType: EmbedderType, isHalf: bool, dev: device) -> Embedder:
-        if embederType == "hubert_base":
-            try:
-                if cls.params.content_vec_500_onnx_on is False:
-                    raise Exception("[Voice Changer][Embedder] onnx is off")
-                file = cls.params.content_vec_500_onnx
-                return OnnxContentvec().loadModel(file, dev)
-            except Exception as e:  # noqa
-                print("[Voice Changer] use torch contentvec", e)
-                file = cls.params.hubert_base
-                return FairseqHubert().loadModel(file, dev, isHalf)
-        elif embederType == "hubert-base-japanese":
-            file = cls.params.hubert_base_jp
-            return FairseqHubertJp().loadModel(file, dev, isHalf)
-        elif embederType == "contentvec":
-            try:
-                if cls.params.content_vec_500_onnx_on is False:
-                    raise Exception("[Voice Changer][Embedder] onnx is off")
-                file = cls.params.content_vec_500_onnx
-                return OnnxContentvec().loadModel(file, dev)
-            except Exception as e:
-                print(e)
-                file = cls.params.hubert_base
-                return FairseqContentvec().loadModel(file, dev, isHalf)
-        elif embederType == "whisper":
-            file = cls.params.whisper_tiny
-            return Whisper().loadModel(file, dev, isHalf)
-        else:
-            return FairseqHubert().loadModel(file, dev, isHalf)
+    def _weight_path(cls, embedderType: EmbedderType) -> str:
+        if embedderType in ("hubert_base", "contentvec"):
+            return cls.params.content_vec_500_onnx if cls.params.content_vec_500_onnx_on else cls.params.hubert_base
+        if embedderType == "hubert-base-japanese":
+            return cls.params.hubert_base_jp
+        if embedderType == "whisper":
+            return cls.params.whisper_tiny
+        raise ValueError(f"unknown embedder type: {embedderType}")
+
+    @classmethod
+    def loadEmbedder(cls, embedderType: EmbedderType, isHalf: bool, dev: device) -> Embedder:
+        if embedderType in ("hubert_base", "contentvec") and cls.params.content_vec_500_onnx_on:
+            return OnnxContentvec().loadModel(cls.params.content_vec_500_onnx, dev)
+        if embedderType == "hubert_base":
+            return FairseqHubert().loadModel(cls.params.hubert_base, dev, isHalf)
+        if embedderType == "hubert-base-japanese":
+            return FairseqHubertJp().loadModel(cls.params.hubert_base_jp, dev, isHalf)
+        if embedderType == "contentvec":
+            return FairseqContentvec().loadModel(cls.params.hubert_base, dev, isHalf)
+        if embedderType == "whisper":
+            return Whisper().loadModel(cls.params.whisper_tiny, dev, isHalf)
+        raise ValueError(f"unknown embedder type: {embedderType}")

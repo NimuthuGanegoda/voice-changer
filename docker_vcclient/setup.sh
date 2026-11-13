@@ -1,19 +1,9 @@
 #!/bin/bash
-
-# 参考:https://programwiz.org/2022/03/22/how-to-write-shell-script-for-option-parsing/
-
-set -eu
-# 実行ユーザ作成
-USER_ID=${LOCAL_UID:-9001}
-GROUP_ID=${LOCAL_GID:-9001}
-
-echo "exec with [UID : $USER_ID, GID: $GROUP_ID]"
-useradd -u $USER_ID -o -m user
-groupmod -g $GROUP_ID user
-chmod uog+rwx tmp_dir
-
-#su user
-#echo "parameter: $@"
-exec /usr/sbin/gosu user /bin/bash exec.sh "$@"
-#/bin/bash
-
+set -euo pipefail
+USER_ID=${LOCAL_UID:-10001}
+GROUP_ID=${LOCAL_GID:-10001}
+if ! getent group "$GROUP_ID" >/dev/null; then groupadd -g "$GROUP_ID" vcclient; fi
+if ! id -u "$USER_ID" >/dev/null 2>&1; then useradd -u "$USER_ID" -g "$GROUP_ID" -m vcclient; fi
+mkdir -p model_dir pretrain upload_dir tmp_dir keys
+chown -R "$USER_ID:$GROUP_ID" model_dir pretrain upload_dir tmp_dir keys
+exec /usr/sbin/gosu "$USER_ID:$GROUP_ID" /bin/bash exec.sh "$@"

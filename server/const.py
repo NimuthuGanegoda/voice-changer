@@ -101,6 +101,7 @@ RVCSampleMode: TypeAlias = Literal[
     "testDDPNTorch",
     "testDDPNONNX",
     "testONNXFull",
+    "testAll",
 ]
 
 

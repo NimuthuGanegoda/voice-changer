@@ -1,14 +1,19 @@
+from __future__ import annotations
 import os
 import sys
 
 from restapi.mods.trustedorigin import TrustedOriginMiddleware
 from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from mods.origins import compute_local_origins, normalize_origins
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from typing import Callable, Optional, Sequence, Literal
 from mods.log_control import VoiceChangaerLogger
-from voice_changer.VoiceChangerManager import VoiceChangerManager
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from voice_changer.VoiceChangerManager import VoiceChangerManager
 
 from restapi.MMVC_Rest_Hello import MMVC_Rest_Hello
 from restapi.MMVC_Rest_VoiceChanger import MMVC_Rest_VoiceChanger
@@ -45,6 +50,7 @@ class MMVC_Rest:
         voiceChangerParams: VoiceChangerParams,
         allowedOrigins: Optional[Sequence[str]] = None,
         port: Optional[int] = None,
+        access_token: str | None = None,
     ):
         if cls._instance is None:
             logger.info("[Voice Changer] MMVC_Rest initializing...")
@@ -53,9 +59,22 @@ class MMVC_Rest:
             app_fastapi.add_middleware(
                 TrustedOriginMiddleware,
                 allowed_origins=allowedOrigins,
-                port=port
+                port=port,
+                access_token=access_token,
+            )
+            origins = set(compute_local_origins(port))
+            if allowedOrigins:
+                origins.update(normalize_origins(allowedOrigins))
+            app_fastapi.add_middleware(
+                CORSMiddleware,
+                allow_origins=sorted(origins),
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
             )
 
+            for directory in (UPLOAD_DIR, TMP_DIR, voiceChangerParams.model_dir):
+                os.makedirs(directory, exist_ok=True)
             app_fastapi.mount(
                 "/front",
                 StaticFiles(directory=f"{getFrontendPath()}", html=True),
@@ -98,12 +117,18 @@ class MMVC_Rest:
                     name="static",
                 )
 
-            restHello = MMVC_Rest_Hello()
+            restHello = MMVC_Rest_Hello(voiceChangerManager)
             app_fastapi.include_router(restHello.router)
             restVoiceChanger = MMVC_Rest_VoiceChanger(voiceChangerManager)
             app_fastapi.include_router(restVoiceChanger.router)
             fileUploader = MMVC_Rest_Fileuploader(voiceChangerManager)
             app_fastapi.include_router(fileUploader.router)
+
+            app_fastapi.mount(
+                "/",
+                StaticFiles(directory=f"{getFrontendPath()}", html=True),
+                name="root",
+            )
 
             cls._instance = app_fastapi
             logger.info("[Voice Changer] MMVC_Rest initializing... done.")

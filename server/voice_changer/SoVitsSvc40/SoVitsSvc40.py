@@ -35,7 +35,6 @@ from .models.utils import (
     get_hubert_content,
 )
 from .models.cluster import get_cluster_model, get_cluster_center_result
-from fairseq import checkpoint_utils
 import librosa
 
 from Exceptions import NoModeLoadedException
@@ -82,15 +81,17 @@ class SoVitsSvc40(VoiceChangerModel):
 
         # hubert model
         try:
+            from fairseq import checkpoint_utils
+            from voice_changer.utils.TrustedCheckpoint import load_legacy_checkpoint
+            state = load_legacy_checkpoint(self.params.hubert_base)
             models, saved_cfg, task = checkpoint_utils.load_model_ensemble_and_task(
-                [self.params.hubert_base],
-                suffix="",
+                [self.params.hubert_base], suffix="", state=state,
             )
             model = models[0]
             model.eval()
             self.hubert_model = model.cpu()
         except Exception as e:
-            print("EXCEPTION during loading hubert/contentvec model", e)
+            raise RuntimeError(f"Could not load legacy HuBERT/ContentVec: {e}") from e
 
         self.gpu_num = torch.cuda.device_count()
         self.audio_buffer: AudioInOut | None = None

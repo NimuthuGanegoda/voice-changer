@@ -37,7 +37,7 @@ export const ModelSamplingRate = {
     "40000": 40000,
     "32000": 32000,
 } as const;
-export type ModelSamplingRate = (typeof InputSampleRate)[keyof typeof InputSampleRate];
+export type ModelSamplingRate = (typeof ModelSamplingRate)[keyof typeof ModelSamplingRate];
 
 export const CrossFadeOverlapSize = {
     "128": 128,
@@ -492,6 +492,7 @@ export const DownSamplingMode = {
 export type DownSamplingMode = (typeof DownSamplingMode)[keyof typeof DownSamplingMode];
 
 export type WorkletNodeSetting = {
+  accessToken?: string;
     serverUrl: string;
     protocol: Protocol;
     sendingSampleRate: SendingSampleRate;
@@ -528,7 +529,7 @@ export type ClientSetting = {
     workletNodeSetting: WorkletNodeSetting;
     voiceChangerClientSetting: VoiceChangerClientSetting;
 };
-export const DefaultClientSettng: ClientSetting = {
+export const DefaultClientSetting: ClientSetting = {
     workletSetting: {
         // numTrancateTreshold: 512 * 2,
         numTrancateTreshold: 100,
@@ -563,6 +564,7 @@ export const VOICE_CHANGER_CLIENT_EXCEPTION = {
     ERR_REST_INVALID_RESPONSE: "ERR_REST_INVALID_RESPONSE",
     ERR_MIC_STREAM_NOT_INITIALIZED: "ERR_MIC_STREAM_NOT_INITIALIZED",
     ERR_INTERNAL_AUDIO_PROCESS_CALLBACK_IS_NOT_INITIALIZED: "ERR_INTERNAL_AUDIO_PROCESS_CALLBACK_IS_NOT_INITIALIZED",
+    ERR_RECORDING_LIMIT: "ERR_RECORDING_LIMIT",
 } as const;
 export type VOICE_CHANGER_CLIENT_EXCEPTION = (typeof VOICE_CHANGER_CLIENT_EXCEPTION)[keyof typeof VOICE_CHANGER_CLIENT_EXCEPTION];
 

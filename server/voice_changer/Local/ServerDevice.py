@@ -4,13 +4,14 @@ import threading
 import numpy as np
 from const import SERVER_DEVICE_SAMPLE_RATES
 
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 from mods.log_control import VoiceChangaerLogger
 
 from voice_changer.Local.AudioDeviceList import checkSamplingRate, list_audio_device
 import time
 import sounddevice as sd
 from voice_changer.utils.Timer import Timer2
+from voice_changer.utils.SettingValidation import finite_float, strict_int
 import librosa
 
 from voice_changer.utils.VoiceChangerModel import AudioInOut
@@ -100,9 +101,9 @@ class ServerDevice:
         self.mon_wav = None
         self.serverAudioInputDevices = None
         self.serverAudioOutputDevices = None
-        self.inQueue = Queue()
-        self.outQueue = Queue()
-        self.monQueue = Queue()
+        self.inQueue = Queue(maxsize=3)
+        self.outQueue = Queue(maxsize=3)
+        self.monQueue = Queue(maxsize=3)
         self.performance = []
 
         # Inference runs on this worker so the sounddevice callbacks never block on the
@@ -141,8 +142,7 @@ class ServerDevice:
 
     def _processData(self, indata: np.ndarray):
         indata = indata * self.settings.serverInputAudioGain
-        unpackedData = librosa.to_mono(indata.T) * 32768.0
-        unpackedData = unpackedData.astype(np.int16)
+        unpackedData = np.clip(librosa.to_mono(indata.T) * 32768.0, -32768.0, 32767.0).astype(np.int16)
         out_wav, times = self.serverDeviceCallbacks.on_request(unpackedData)
         return out_wav, times
 
@@ -158,12 +158,15 @@ class ServerDevice:
     @staticmethod
     def _putBounded(queue: Queue, item):
         # Keep queues shallow: catching up on a backlog only adds latency.
-        try:
-            while queue.qsize() > 2:
-                queue.get_nowait()
-        except Empty:
-            pass
-        queue.put(item)
+        while True:
+            try:
+                queue.put_nowait(item)
+                return
+            except Full:
+                try:
+                    queue.get_nowait()  # drop the oldest block, never block PortAudio
+                except Empty:
+                    pass
 
     @staticmethod
     def _getLatest(queue: Queue):
@@ -181,7 +184,7 @@ class ServerDevice:
             return
         outputChannels = outdata.shape[1]
         outdata[:] = np.repeat(out_wav, outputChannels).reshape(-1, outputChannels) / 32768.0
-        outdata[:] = outdata * gain
+        outdata[:] = np.clip(outdata * gain, -1.0, 1.0)
 
     def _inferenceWorker(self):
         while True:
@@ -302,6 +305,14 @@ class ServerDevice:
     def start(self):
         self.currentModelSamplingRate = -1
         while True:
+            try:
+                self._startOnce()
+            except Exception:
+                logger.exception("[ServerDevice] audio device loop failed; retrying")
+                time.sleep(2)
+
+    def _startOnce(self):
+        while True:
             if self.settings.serverAudioStated == 0 or self.settings.serverInputDeviceId == -1:
                 # sd._terminate()
                 # sd._initialize()
@@ -327,6 +338,11 @@ class ServerDevice:
                 if self.settings.serverMonitorDeviceId != -1:
                     serverMonitorAudioDevice = self.getServerOutputAudioDevice(self.settings.serverMonitorDeviceId)
 
+                if serverInputAudioDevice is None or serverOutputAudioDevice is None:
+                    print("serverInputAudioDevice or serverOutputAudioDevice is None")
+                    time.sleep(2)
+                    continue
+
                 # Generate ExtraSetting
                 inputExtraSetting = None
                 outputExtraSetting = None
@@ -344,12 +360,6 @@ class ServerDevice:
                 print("  [Input]:", serverInputAudioDevice, inputExtraSetting)
                 print("  [Output]:", serverOutputAudioDevice, outputExtraSetting)
                 print("  [Monitor]:", serverMonitorAudioDevice, monitorExtraSetting)
-
-                # Deviceがなかったらいったんスリープ
-                if serverInputAudioDevice is None or serverOutputAudioDevice is None:
-                    print("serverInputAudioDevice or serverOutputAudioDevice is None")
-                    time.sleep(2)
-                    continue
 
                 # サンプリングレート
                 # 同一サンプリングレートに統一（変換時にサンプルが不足する場合があるため。パディング方法が明らかになれば、それぞれ設定できるかも）
@@ -468,7 +478,24 @@ class ServerDevice:
 
     def update_settings(self, key: str, val: str | int | float):
         if key in EditableServerDeviceSettings["intData"]:
-            setattr(self.settings, key, int(val))
+            value = strict_int(val, key)
+            if key == "serverReadChunkSize" and not 1 <= value <= 512:
+                raise ValueError("serverReadChunkSize must be between 1 and 512")
+            if "SampleRate" in key and value not in SERVER_DEVICE_SAMPLE_RATES:
+                raise ValueError(f"unsupported sample rate: {value}")
+            if key in ("enableServerAudio", "serverAudioStated") and value not in (0, 1):
+                raise ValueError(f"{key} must be 0 or 1")
+            if key.endswith("DeviceId") and value < -1:
+                raise ValueError("audio device id must be -1 or a nonnegative index")
         elif key in EditableServerDeviceSettings["floatData"]:
-            setattr(self.settings, key, float(val))
-        return self.get_info()
+            value = finite_float(val, key)
+            if not 0 <= value <= 10:
+                raise ValueError("audio gain must be finite and between 0 and 10")
+        elif key in EditableServerDeviceSettings["boolData"]:
+            if val not in (True, False, "true", "false", 0, 1, "0", "1"):
+                raise ValueError("invalid boolean value")
+            value = val in (True, "true", 1, "1")
+        else:
+            return None
+        setattr(self.settings, key, value)
+        return None

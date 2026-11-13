@@ -168,7 +168,8 @@ def loadSlotInfo(model_dir: str, slotIndex: int | StaticSlot) -> ModelSlots:
     jsonFile = os.path.join(slotDir, "params.json")
     if not os.path.exists(jsonFile):
         return ModelSlot()
-    jsonDict = json.load(open(jsonFile, encoding="utf-8"))
+    with open(jsonFile, encoding="utf-8") as source:
+        jsonDict = json.load(source)
     slotInfoKey = list(ModelSlot.__annotations__.keys())
     slotInfo = ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     if slotInfo.voiceChangerType == "RVC":
@@ -220,5 +221,6 @@ def saveSlotInfo(model_dir: str, slotIndex: int, slotInfo: ModelSlots):
     slotDir = os.path.join(model_dir, str(slotIndex))
     print("SlotInfo:::", slotInfo)
     slotInfoDict = asdict(slotInfo)
-    slotInfo.slotIndex = -1  # スロットインデックスは動的に注入
-    json.dump(slotInfoDict, open(os.path.join(slotDir, "params.json"), "w"), indent=4)
+    # Keep the in-memory index stable after saving metadata.
+    from voice_changer.utils.AtomicFile import write_json_atomic
+    write_json_atomic(os.path.join(slotDir, "params.json"), slotInfoDict, indent=4)

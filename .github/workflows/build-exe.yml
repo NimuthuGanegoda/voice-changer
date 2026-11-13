@@ -1,5 +1,8 @@
 name: Build Windows EXE
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -27,11 +30,18 @@ jobs:
           cache: 'pip'
           cache-dependency-path: server/requirements.txt
 
-      - name: Build Frontend
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Build local client library and frontend
         run: |
-          cd client/demo
           npm ci
-          npx webpack --config webpack.prod.js
+          npm run typecheck
+          npm run build:client
 
       - name: Install Server Dependencies
         run: |

@@ -65,6 +65,7 @@ export type ModelUploadSetting = {
 export type ModelFileForServer = Omit<ModelFile, "file"> & {
   name: string;
   kind: ModelFileKind;
+  uploadName?: string;
 };
 export type ModelUploadSettingForServer = Omit<ModelUploadSetting, "files"> & {
   files: ModelFileForServer[];
@@ -74,6 +75,7 @@ type AssetUploadSetting = {
   slot: number;
   name: ModelAssetName;
   file: string;
+  uploadName?: string;
 };
 
 export type UseServerSettingProps = {
@@ -94,6 +96,9 @@ export type ServerSettingState = {
   playSound: (filename: string) => Promise<{ status: string; message?: string } | void>;
   tts: (text: string, voice?: string) => Promise<{ status: string; message?: string } | void>;
   getSoundboardList: () => Promise<{ status: string; files?: string[]; message?: string }>;
+  stopSounds: () => Promise<{ status: string; message?: string } | void>;
+  deleteSound: (filename: string) => Promise<{ status: string; message?: string } | void>;
+  getTtsVoices: () => Promise<{ status: string; voices?: { id: string; name: string; languages: string[] }[]; message?: string }>;
   uploadSoundboardFile: (file: File) => Promise<{ status: string; message?: string } | void>;
   mergeModel: (request: MergeModelRequest) => Promise<ServerInfo>;
   updateModelDefault: () => Promise<ServerInfo>;
@@ -102,6 +107,7 @@ export type ServerSettingState = {
     key: string,
     val: string
   ) => Promise<ServerInfo>;
+  deleteModel: (slot: number) => Promise<ServerInfo>;
   uploadAssets: (
     slot: number,
     name: ModelAssetName,
@@ -128,6 +134,10 @@ export const useServerSetting = (
   const updateServerSettings = useMemo(() => {
     return async (setting: ServerInfo) => {
       if (!props.voiceChangerClient) return;
+      if (!(setting.crossFadeOffsetRate >= 0 && setting.crossFadeOffsetRate < setting.crossFadeEndRate && setting.crossFadeEndRate <= 1)) {
+        throw new Error("crossfade rates must satisfy 0 <= start < end <= 1");
+      }
+      try {
       for (let i = 0; i < Object.values(ServerSettingKey).length; i++) {
         const k = Object.values(ServerSettingKey)[
           i
@@ -143,6 +153,10 @@ export const useServerSetting = (
           setServerSetting(res);
         }
       }
+      } catch (error) {
+        await reloadServerInfo();
+        throw error;
+      }
     };
   }, [props.voiceChangerClient, serverSetting]);
 
@@ -154,86 +168,53 @@ export const useServerSetting = (
 
   // (e) モデルアップロード
   const _uploadFile2 = useMemo(() => {
-    return async (
-      file: File,
-      onprogress: (progress: number, end: boolean) => void,
-      dir: string = ""
-    ) => {
-      if (!props.voiceChangerClient) return;
-      const num = await props.voiceChangerClient.uploadFile2(
-        dir,
-        file,
-        onprogress
-      );
-      const res = await props.voiceChangerClient.concatUploadedFile(
-        dir + file.name,
-        num
-      );
-      console.log("uploaded", num, res);
+    return async (file: File, onprogress: (progress: number, end: boolean) => void, dir = "") => {
+      if (!props.voiceChangerClient) throw new Error("voice changer client is not initialized");
+      // Concatenation is part of the upload: do not report success until it commits.
+      return props.voiceChangerClient.uploadFileWithId(dir, file, onprogress);
     };
   }, [props.voiceChangerClient]);
 
-  // 新しいアップローダ
   const uploadModel = useMemo(() => {
     return async (setting: ModelUploadSetting) => {
-      if (!props.voiceChangerClient) {
-        return;
-      }
-
+      if (!props.voiceChangerClient) throw new Error("voice changer client is not initialized");
+      if (!Number.isInteger(setting.slot) || setting.slot < 0 || setting.slot >= 500) throw new Error("invalid model slot");
+      if (!setting.isSampleMode && setting.files.length === 0) throw new Error("select a model file");
       setUploadProgress(0);
       setIsUploading(true);
-
-      if (setting.isSampleMode == false) {
-        const progRate = 1 / setting.files.length;
-        for (let i = 0; i < setting.files.length; i++) {
-          const progOffset = 100 * i * progRate;
-          await _uploadFile2(
-            setting.files[i].file,
-            (progress: number, _end: boolean) => {
-              setUploadProgress(progress * progRate + progOffset);
-            },
-            setting.files[i].dir
-          );
+      try {
+        const files: ModelFileForServer[] = [];
+        for (let i = 0; i < setting.files.length && !setting.isSampleMode; i++) {
+          const entry = setting.files[i];
+          const uploaded = await _uploadFile2(entry.file, progress => {
+            setUploadProgress((i + progress / 100) / setting.files.length * 95);
+          }, entry.dir);
+          files.push({ name: entry.file.name, kind: entry.kind, dir: entry.dir, uploadName: uploaded.storedName });
         }
+        const params: ModelUploadSettingForServer = { ...setting, files };
+        await props.voiceChangerClient.loadModel(setting.slot, false, JSON.stringify(params));
+        setServerSetting(await props.voiceChangerClient.getServerSettings());
+        setUploadProgress(100);
+      } finally {
+        setIsUploading(false);
       }
-      const params: ModelUploadSettingForServer = {
-        ...setting,
-        files: setting.files.map((f) => {
-          return { name: f.file.name, kind: f.kind, dir: f.dir };
-        }),
-      };
-
-      const loadPromise = props.voiceChangerClient.loadModel(
-        0,
-        false,
-        JSON.stringify(params)
-      );
-      await loadPromise;
-
-      setUploadProgress(0);
-      setIsUploading(false);
-      reloadServerInfo();
     };
-  }, [props.voiceChangerClient]);
+  }, [props.voiceChangerClient, _uploadFile2]);
 
   const uploadAssets = useMemo(() => {
     return async (slot: number, name: ModelAssetName, file: File) => {
-      if (!props.voiceChangerClient) return;
-
-      await _uploadFile2(file, (progress: number, _end: boolean) => {
-        console.log(progress, _end);
-      });
-      const assetUploadSetting: AssetUploadSetting = {
-        slot,
-        name,
-        file: file.name,
-      };
-      await props.voiceChangerClient.uploadAssets(
-        JSON.stringify(assetUploadSetting)
-      );
-      reloadServerInfo();
+      if (!props.voiceChangerClient) throw new Error("voice changer client is not initialized");
+      setIsUploading(true);
+      try {
+        const uploaded = await _uploadFile2(file, setUploadProgress);
+        const asset: AssetUploadSetting = { slot, name, file: file.name, uploadName: uploaded.storedName };
+        const info = await props.voiceChangerClient.uploadAssets(JSON.stringify(asset));
+        setServerSetting(info);
+      } finally {
+        setIsUploading(false);
+      }
     };
-  }, [props.voiceChangerClient]);
+  }, [props.voiceChangerClient, _uploadFile2]);
 
   const reloadServerInfo = useMemo(() => {
     return async () => {
@@ -266,6 +247,18 @@ export const useServerSetting = (
     if (!props.voiceChangerClient) return { status: "Error", files: [] };
     return props.voiceChangerClient.getSoundboardList();
   };
+  const stopSounds = async () => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.stopSounds();
+  };
+  const deleteSound = async (filename: string) => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.deleteSound(filename);
+  };
+  const getTtsVoices = async () => {
+    if (!props.voiceChangerClient) return { status: "Error", voices: [] };
+    return props.voiceChangerClient.getTtsVoices();
+  };
 
   const uploadSoundboardFile = async (file: File) => {
     if (!props.voiceChangerClient) return;
@@ -292,6 +285,11 @@ export const useServerSetting = (
     setServerSetting(serverInfo);
     return serverInfo;
   };
+  const deleteModel = async (slot: number) => {
+    const serverInfo = await props.voiceChangerClient!.deleteModel(slot);
+    setServerSetting(serverInfo);
+    return serverInfo;
+  };
 
   return {
     serverSetting,
@@ -306,10 +304,14 @@ export const useServerSetting = (
     playSound,
     tts,
     getSoundboardList,
+    stopSounds,
+    deleteSound,
+    getTtsVoices,
     uploadSoundboardFile,
     mergeModel,
     updateModelDefault,
     updateModelInfo,
+    deleteModel,
     uploadAssets,
   };
 };

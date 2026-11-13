@@ -1,6 +1,6 @@
 import { VoiceChangerWorkletProcessorRequest } from "../@types/voice-changer-worklet-processor";
 import {
-  DefaultClientSettng,
+  DefaultClientSetting,
   DownSamplingMode,
   VOICE_CHANGER_CLIENT_EXCEPTION,
   WorkletNodeSetting,
@@ -27,8 +27,12 @@ export type InternalCallback = {
 export class VoiceChangerWorkletNode extends AudioWorkletNode {
   private listener: VoiceChangerWorkletListener;
 
-  private setting: WorkletNodeSetting = DefaultClientSettng.workletNodeSetting;
+  private setting: WorkletNodeSetting = { ...DefaultClientSetting.workletNodeSetting };
   private requestChunks: ArrayBuffer[] = [];
+  private pendingRequests = 0;
+  private recordingSamples = 0;
+  private recordingTruncated = false;
+  private static readonly MAX_RECORDING_SAMPLES = 48000 * 300;
   private socket: Socket<DefaultEventsMap, DefaultEventsMap> | null = null;
   // performance monitor
   private bufferStart = 0;
@@ -44,15 +48,17 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
   private stopPromiseResolve:
     | ((value: void | PromiseLike<void>) => void)
     | null = null;
+  private startPromise: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
 
   // InternalCallback
   private internalCallback: InternalCallback | null = null;
 
-  constructor(context: AudioContext, listener: VoiceChangerWorkletListener) {
+  constructor(context: AudioContext, listener: VoiceChangerWorkletListener, private connectSocket = true) {
     super(context, "voice-changer-worklet-processor");
     this.port.onmessage = this.handleMessage.bind(this);
     this.listener = listener;
-    this.createSocketIO();
+    if (this.connectSocket) this.createSocketIO();
     console.log(`[worklet_node][voice-changer-worklet-processor] created.`);
   }
 
@@ -70,12 +76,17 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
     let recreateSocketIoRequired = false;
     if (
       this.setting.serverUrl != setting.serverUrl ||
-      this.setting.protocol != setting.protocol
+      this.setting.protocol != setting.protocol ||
+      this.setting.accessToken != setting.accessToken
     ) {
       recreateSocketIoRequired = true;
     }
-    this.setting = setting;
-    if (recreateSocketIoRequired) {
+    if (![24000, 44100, 48000].includes(setting.sendingSampleRate)) throw new Error("unsupported sending sample rate");
+    if (!Number.isInteger(setting.inputChunkNum) || setting.inputChunkNum < 1 || setting.inputChunkNum > 4096) throw new Error("inputChunkNum must be an integer between 1 and 4096");
+    if (!["sio", "rest", "internal"].includes(setting.protocol)) throw new Error("unknown protocol");
+    if (!["decimate", "average"].includes(setting.downSamplingMode)) throw new Error("unknown downsampling mode");
+    this.setting = { ...setting };
+    if (recreateSocketIoRequired && this.connectSocket) {
       this.createSocketIO();
     }
   };
@@ -85,7 +96,7 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
   };
 
   getSettings = (): WorkletNodeSetting => {
-    return this.setting;
+    return { ...this.setting };
   };
 
   getSocketId = () => {
@@ -95,10 +106,14 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
   // 処理
   private createSocketIO = () => {
     if (this.socket) {
+      this.socket.removeAllListeners();
       this.socket.close();
+      this.socket = null;
     }
+    this.pendingRequests = 0;
+    this.requestChunks = [];
     if (this.setting.protocol === "sio") {
-      this.socket = io(this.setting.serverUrl + "/test");
+      this.socket = io(this.setting.serverUrl + "/test", { auth: { token: this.setting.accessToken ?? "" }, reconnection: true, reconnectionDelay: 500, reconnectionDelayMax: 5000 });
       this.socket.on("connect_error", (err) => {
         this.listener.notifyException(
           VOICE_CHANGER_CLIENT_EXCEPTION.ERR_SIO_CONNECT_FAILED,
@@ -109,8 +124,17 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
         console.log(`[SIO] connect to ${this.setting.serverUrl}`);
         console.log(`[SIO] ${this.socket?.id}`);
       });
-      this.socket.on("close", function (socket) {
-        console.log(`[SIO] close ${socket.id}`);
+      this.socket.on("disconnect", (reason) => {
+        this.pendingRequests = 0;
+        this.requestChunks = [];
+        console.log(`[SIO] disconnected: ${reason}`);
+      });
+      this.socket.on("overrun", () => {
+        this.pendingRequests = Math.max(0, this.pendingRequests - 1);
+      });
+      this.socket.on("vc_error", (error: { msg: string }) => {
+        this.pendingRequests = Math.max(0, this.pendingRequests - 1);
+        this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_SIO_INVALID_RESPONSE, error?.msg ?? "server conversion error");
       });
 
       this.socket.on("message", (response: any[]) => {
@@ -118,13 +142,18 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       });
 
       this.socket.on("response", (response: any[]) => {
+        if (!Array.isArray(response) || response.length < 2 || typeof response[0] !== "number") {
+          this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_SIO_INVALID_RESPONSE, "malformed realtime response");
+          return;
+        }
         const cur = Date.now();
         const responseTime = cur - response[0];
         const result = response[1] as ArrayBuffer;
         const perf = response[2];
+        if (response[0] !== 0) this.pendingRequests = Math.max(0, this.pendingRequests - 1);
 
         // Quick hack for server device mode
-        if (response[0] == 0) {
+        if (response[0] == 0 && Array.isArray(perf)) {
           this.listener.notifyResponseTime(
             Math.round(perf[0] * 1000),
             perf.slice(1, 4)
@@ -132,10 +161,10 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
           return;
         }
 
-        if (result.byteLength < 128 * 2) {
+        if (!(result instanceof ArrayBuffer) || result.byteLength < 128 * 2) {
           this.listener.notifyException(
             VOICE_CHANGER_CLIENT_EXCEPTION.ERR_SIO_INVALID_RESPONSE,
-            `[SIO] recevied data is too short ${result.byteLength}`
+            `[SIO] received data is too short ${result instanceof ArrayBuffer ? result.byteLength : 0}`
           );
         } else {
           if (this.outputNode != null) {
@@ -150,28 +179,22 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
   };
 
   postReceivedVoice = (data: ArrayBuffer) => {
+    if (!(data instanceof ArrayBuffer) || data.byteLength % 2 !== 0 || data.byteLength < 128 * 2) {
+      this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_SIO_INVALID_RESPONSE, "audio response must be even-length PCM16 of at least 128 samples");
+      return;
+    }
     // Int16 to Float
-    const i16Data = new Int16Array(data);
+    const i16Data = new Int16Array(data); // Socket.IO already decodes signed PCM16.
     const f32Data = new Float32Array(i16Data.length);
     // console.log(`[worklet] f32DataLength${f32Data.length} i16DataLength${i16Data.length}`)
     i16Data.forEach((x, i) => {
-      const float = x >= 0x8000 ? -(0x10000 - x) / 0x8000 : x / 0x7fff;
+      const float = x / (x < 0 ? 0x8000 : 0x7fff);
       f32Data[i] = float;
     });
 
-    // アップサンプリング
-    let upSampledBuffer: Float32Array | null = null;
-    if (this.setting.sendingSampleRate == 48000) {
-      upSampledBuffer = f32Data;
-    } else {
-      upSampledBuffer = new Float32Array(f32Data.length * 2);
-      for (let i = 0; i < f32Data.length; i++) {
-        const currentFrame = f32Data[i];
-        const nextFrame = i + 1 < f32Data.length ? f32Data[i + 1] : f32Data[i];
-        upSampledBuffer[i * 2] = currentFrame;
-        upSampledBuffer[i * 2 + 1] = (currentFrame + nextFrame) / 2;
-      }
-    }
+    // Upsample the server's sending rate to the worklet's 48 kHz clock.
+    // This must also handle 44.1 kHz; the old code assumed every non-48k rate was 24k.
+    const upSampledBuffer = this._resampleBuffer(f32Data, this.setting.sendingSampleRate, 48000);
 
     const req: VoiceChangerWorkletProcessorRequest = {
       requestType: "voice",
@@ -183,9 +206,33 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
     this.port.postMessage(req);
 
     if (this.isOutputRecording) {
-      this.recordingOutputChunk.push(upSampledBuffer);
+      const remaining = VoiceChangerWorkletNode.MAX_RECORDING_SAMPLES - this.recordingSamples;
+      if (remaining > 0) {
+        const chunk = upSampledBuffer.length <= remaining ? upSampledBuffer : upSampledBuffer.slice(0, remaining);
+        this.recordingOutputChunk.push(chunk);
+        this.recordingSamples += chunk.length;
+      } else if (!this.recordingTruncated) {
+        this.recordingTruncated = true;
+        this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_RECORDING_LIMIT, "recording reached the five-minute safety limit");
+      }
     }
   };
+
+  private _resampleBuffer(buffer: Float32Array, fromRate: number, toRate: number): Float32Array {
+    if (!Number.isFinite(fromRate) || !Number.isFinite(toRate) || fromRate <= 0 || toRate <= 0) throw new Error("sample rates must be positive");
+    if (fromRate === toRate || buffer.length === 0) return buffer;
+    const outLength = Math.max(1, Math.round(buffer.length * toRate / fromRate));
+    const out = new Float32Array(outLength);
+    const ratio = fromRate / toRate;
+    for (let i = 0; i < outLength; i++) {
+      const pos = i * ratio;
+      const left = Math.floor(pos);
+      const right = Math.min(left + 1, buffer.length - 1);
+      const frac = pos - left;
+      out[i] = buffer[left] * (1 - frac) + buffer[right] * frac;
+    }
+    return out;
+  }
 
   private _averageDownsampleBuffer(
     buffer: Float32Array,
@@ -196,7 +243,7 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       return buffer;
     }
     if (destinationSamplerate > originalSampleRate) {
-      throw "downsampling rate show be smaller than original sample rate";
+      throw new Error("downsampling destination rate must not exceed the original rate");
     }
     const sampleRateRatio = originalSampleRate / destinationSamplerate;
     const newLength = Math.round(buffer.length / sampleRateRatio);
@@ -204,12 +251,12 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
     let offsetResult = 0;
     let offsetBuffer = 0;
     while (offsetResult < result.length) {
-      var nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
       // Use average value of skipped samples
-      var accum = 0,
+      let accum = 0,
         count = 0;
       for (
-        var i = offsetBuffer;
+        let i = offsetBuffer;
         i < nextOffsetBuffer && i < buffer.length;
         i++
       ) {
@@ -246,14 +293,12 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       let downsampledBuffer: Float32Array | null = null;
       if (this.setting.sendingSampleRate == 48000) {
         downsampledBuffer = inputData;
-      } else if (this.setting.downSamplingMode == DownSamplingMode.decimate) {
+      } else if (this.setting.downSamplingMode == DownSamplingMode.decimate && this.setting.sendingSampleRate == 24000) {
         //////// (Kind 1) 間引き //////////
         //// 48000Hz で入ってくるので間引いて24000Hzに変換する。
-        downsampledBuffer = new Float32Array(inputData.length / 2);
-        for (let i = 0; i < inputData.length; i++) {
-          if (i % 2 == 0) {
-            downsampledBuffer[i / 2] = inputData[i];
-          }
+        downsampledBuffer = new Float32Array(Math.floor(inputData.length / 2));
+        for (let i = 0; i < downsampledBuffer.length; i++) {
+          downsampledBuffer[i] = inputData[i * 2];
         }
       } else {
         //////// (Kind 2) 平均 //////////
@@ -279,9 +324,11 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       } else {
         // internal
         // console.log("downsampledBuffer.buffer", downsampledBuffer.buffer);
-        this.requestChunks.push(downsampledBuffer.buffer);
+        this.requestChunks.push(downsampledBuffer.buffer as ArrayBuffer);
       }
 
+      const maxChunks = Math.max(1, this.setting.inputChunkNum) * 2;
+      if (this.requestChunks.length > maxChunks) this.requestChunks.splice(0, this.requestChunks.length - maxChunks);
       //// リクエストバッファの中身が、リクエスト送信数と違う場合は処理終了。
       if (this.requestChunks.length < this.setting.inputChunkNum) {
         return;
@@ -315,27 +362,32 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
   private sendBuffer = async (newBuffer: Uint8Array) => {
     const timestamp = Date.now();
     if (this.setting.protocol === "sio") {
-      if (!this.socket) {
-        console.warn(`sio is not initialized`);
-        return;
-      }
-      // console.log("emit!")
-      this.socket.emit("request_message", [timestamp, newBuffer.buffer]);
+      if (!this.socket || !this.socket.connected || this.pendingRequests >= 4) return;
+      this.pendingRequests += 1;
+      this.socket.volatile.emit("request_message", [timestamp, newBuffer.buffer as ArrayBuffer]);
     } else if (this.setting.protocol === "rest") {
-      const restClient = new ServerRestClient(this.setting.serverUrl);
-      const res = await restClient.postVoice(timestamp, newBuffer.buffer);
-      if (res.byteLength < 128 * 2) {
-        this.listener.notifyException(
-          VOICE_CHANGER_CLIENT_EXCEPTION.ERR_REST_INVALID_RESPONSE,
-          `[REST] recevied data is too short ${res.byteLength}`
-        );
-      } else {
-        if (this.outputNode != null) {
-          this.outputNode.postReceivedVoice(res);
+      if (this.pendingRequests >= 2) return;
+      this.pendingRequests += 1;
+      const restClient = new ServerRestClient(this.setting.serverUrl, this.setting.accessToken);
+      try {
+        const res = await restClient.postVoice(timestamp, newBuffer.buffer as ArrayBuffer);
+        if (res.byteLength < 128 * 2) {
+          this.listener.notifyException(
+            VOICE_CHANGER_CLIENT_EXCEPTION.ERR_REST_INVALID_RESPONSE,
+            `[REST] received data is too short ${res.byteLength}`
+          );
         } else {
-          this.postReceivedVoice(res);
+          if (this.outputNode != null) {
+            this.outputNode.postReceivedVoice(res);
+          } else {
+            this.postReceivedVoice(res);
+          }
+          this.listener.notifyResponseTime(Date.now() - timestamp);
         }
-        this.listener.notifyResponseTime(Date.now() - timestamp);
+      } catch (error) {
+        this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_REST_INVALID_RESPONSE, String(error));
+      } finally {
+        this.pendingRequests -= 1;
       }
     } else if (this.setting.protocol == "internal") {
       if (!this.internalCallback) {
@@ -350,22 +402,24 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       //     return;
       // }
       // if (this.outputNode != null) {
-      //     this.outputNode.postReceivedVoice(res.buffer);
+      //     this.outputNode.postReceivedVoice(res.buffer as ArrayBuffer);
       // } else {
-      //     this.postReceivedVoice(res.buffer);
+      //     this.postReceivedVoice(res.buffer as ArrayBuffer);
       // }
       this.internalCallback.processAudio(newBuffer).then((res) => {
         if (res.length < 128 * 2) {
           return;
         }
         if (this.outputNode != null) {
-          this.outputNode.postReceivedVoice(res.buffer);
+          this.outputNode.postReceivedVoice(res.buffer as ArrayBuffer);
         } else {
-          this.postReceivedVoice(res.buffer);
+          this.postReceivedVoice(res.buffer as ArrayBuffer);
         }
+      }).catch((error) => {
+        this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_INTERNAL_AUDIO_PROCESS_CALLBACK_IS_NOT_INITIALIZED, String(error));
       });
     } else {
-      throw "unknown protocol";
+      this.listener.notifyException(VOICE_CHANGER_CLIENT_EXCEPTION.ERR_SIO_INVALID_RESPONSE, `unknown protocol ${this.setting.protocol}`);
     }
   };
 
@@ -382,9 +436,11 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
   };
 
   start = async () => {
+    if (this.startPromise) return this.startPromise;
     const p = new Promise<void>((resolve) => {
       this.startPromiseResolve = resolve;
     });
+    this.startPromise = p;
     const req: VoiceChangerWorkletProcessorRequest = {
       requestType: "start",
       voice: new Float32Array(1),
@@ -392,13 +448,20 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       volTrancateThreshold: 0,
       volTrancateLength: 0,
     };
-    this.port.postMessage(req);
-    await p;
+    try {
+      this.port.postMessage(req);
+      await p;
+    } finally {
+      this.startPromise = null;
+      this.startPromiseResolve = null;
+    }
   };
   stop = async () => {
+    if (this.stopPromise) return this.stopPromise;
     const p = new Promise<void>((resolve) => {
       this.stopPromiseResolve = resolve;
     });
+    this.stopPromise = p;
     const req: VoiceChangerWorkletProcessorRequest = {
       requestType: "stop",
       voice: new Float32Array(1),
@@ -406,8 +469,13 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
       volTrancateThreshold: 0,
       volTrancateLength: 0,
     };
-    this.port.postMessage(req);
-    await p;
+    try {
+      this.port.postMessage(req);
+      await p;
+    } finally {
+      this.stopPromise = null;
+      this.stopPromiseResolve = null;
+    }
   };
   trancateBuffer = () => {
     const req: VoiceChangerWorkletProcessorRequest = {
@@ -422,6 +490,8 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
 
   startOutputRecording = () => {
     this.recordingOutputChunk = [];
+    this.recordingSamples = 0;
+    this.recordingTruncated = false;
     this.isOutputRecording = true;
   };
   stopOutputRecording = () => {
@@ -438,6 +508,8 @@ export class VoiceChangerWorkletNode extends AudioWorkletNode {
         sampleIndex++;
       }
     }
+    this.recordingOutputChunk = [];
+    this.recordingSamples = 0;
     return samples;
   };
 }

@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 where python >nul 2>nul
 if errorlevel 1 (
-    echo python not found on PATH. Install Python 3.10+ from python.org first,
+    echo python not found on PATH. Install Python 3.10 from python.org first (tested release version),
     echo and check "Add python.exe to PATH" during install.
     goto :fail
 )
@@ -46,7 +46,7 @@ python MMVCServerSIO.py -p 18888 ^
     --host 127.0.0.1 ^
     --test_connect 127.0.0.1 ^
     --model_dir model_dir ^
-    --samples samples.json
+    %*
 
 if errorlevel 1 goto :fail
 goto :eof

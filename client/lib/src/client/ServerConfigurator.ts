@@ -4,8 +4,8 @@ import { ServerRestClient } from "./ServerRestClient";
 export class ServerConfigurator {
     private restClient;
 
-    constructor(serverUrl: string) {
-        this.restClient = new ServerRestClient(serverUrl);
+    constructor(serverUrl: string, accessToken = "") {
+        this.restClient = new ServerRestClient(serverUrl, accessToken);
     }
 
     getSettings = async () => {
@@ -31,6 +31,15 @@ export class ServerConfigurator {
     getSoundboardList = async () => {
         return this.restClient.getSoundboardList();
     };
+    stopSounds = async () => {
+        return this.restClient.stopSounds();
+    };
+    deleteSound = async (filename: string) => {
+        return this.restClient.deleteSound(filename);
+    };
+    getTtsVoices = async () => {
+        return this.restClient.getTtsVoices();
+    };
 
     uploadSoundboardFile = async (file: File) => {
         return this.restClient.uploadSoundboardFile(file);
@@ -44,12 +53,16 @@ export class ServerConfigurator {
         return this.restClient.uploadFile2(dir, file, onprogress);
     };
 
+    uploadFileWithId = async (dir: string, file: File, onprogress: (progress: number, end: boolean) => void) => {
+        return this.restClient.uploadFileWithId(dir, file, onprogress);
+    };
+
     uploadFile = async (buf: ArrayBuffer, filename: string, onprogress: (progress: number, end: boolean) => void) => {
         return this.restClient.uploadFile(buf, filename, onprogress);
     };
 
-    concatUploadedFile = async (filename: string, chunkNum: number) => {
-        return this.restClient.concatUploadedFile(filename, chunkNum);
+    concatUploadedFile = async (filename: string, chunkNum: number, uploadId?: string, originalFilename?: string) => {
+        return this.restClient.concatUploadedFile(filename, chunkNum, uploadId, originalFilename);
     };
 
     loadModel = async (slot: number, isHalf: boolean, params: string = "{}") => {
@@ -78,5 +91,8 @@ export class ServerConfigurator {
 
     updateModelInfo = async (slot: number, key: string, val: string) => {
         return this.restClient.updateModelInfo(slot, key, val);
+    };
+    deleteModel = async (slot: number) => {
+        return this.restClient.deleteModel(slot);
     };
 }
