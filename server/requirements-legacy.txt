@@ -1,0 +1,9 @@
+# Alternative to requirements.txt, for Python 3.10 environments that need the
+# legacy Fairseq HuBERT/ContentVec or so-vits-svc backends. Do not install both.
+# Fairseq 0.12.2 still uses aliases removed in NumPy 1.24.
+-r requirements-base.txt
+numpy==1.23.5
+fairseq==0.12.2
+onnxruntime-directml==1.23.0; sys_platform == 'win32'
+onnxruntime-gpu==1.23.2; sys_platform == 'linux'
+onnxruntime==1.23.2; sys_platform == 'darwin'

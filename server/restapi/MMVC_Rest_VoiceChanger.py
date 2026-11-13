@@ -1,36 +1,42 @@
+from __future__ import annotations
+
+import asyncio
 import base64
 import os
-import struct
 import sys
+import tempfile
+from typing import TYPE_CHECKING
+
 import numpy as np
-import traceback
-
-from fastapi import APIRouter, UploadFile, File, Form
-from fastapi.encoders import jsonable_encoder
+from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
-from voice_changer.VoiceChangerManager import VoiceChangerManager
 from const import SOUNDBOARD_DIR
+from restapi.MMVC_Rest_Fileuploader import LimitedUploadFile, failure
 from restapi.mods.FileUploader import upload_file
-from pydantic import BaseModel
-import threading
+
+if TYPE_CHECKING:
+    from voice_changer.VoiceChangerManager import VoiceChangerManager
+
+MAX_SOUNDBOARD_BYTES = 20 * 1024 * 1024
+SOUNDBOARD_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
+MAX_TTS_CHARS = 500
 
 
 class VoiceModel(BaseModel):
     timestamp: int
-    buffer: str
+    buffer: str = Field(min_length=1, max_length=1_400_000)
 
 
 class SoundRequest(BaseModel):
-    filename: str
+    filename: str = Field(min_length=1, max_length=255)
 
 
 class TTSRequest(BaseModel):
-    text: str
-    # Empty = use the OS default voice. Matched by substring against the local
-    # engine's installed voice names (e.g. "zira", "david") - not a cloud voice
-    # catalog name, since synthesis happens fully offline via pyttsx3.
-    voice: str = ""
+    text: str = Field(min_length=1, max_length=MAX_TTS_CHARS)
+    # Empty = use the OS default voice. Otherwise an id/name returned by /tts/voices.
+    voice: str = Field(default="", max_length=255)
 
 
 class MMVC_Rest_VoiceChanger:
@@ -41,23 +47,20 @@ class MMVC_Rest_VoiceChanger:
         self.router.add_api_route("/play_sound", self.play_sound, methods=["POST"])
         self.router.add_api_route("/soundboard/list", self.soundboard_list, methods=["GET"])
         self.router.add_api_route("/soundboard/upload", self.soundboard_upload, methods=["POST"])
+        self.router.add_api_route("/soundboard/stop", self.soundboard_stop, methods=["POST"])
+        self.router.add_api_route("/soundboard/delete", self.soundboard_delete, methods=["POST"])
+        self.router.add_api_route("/tts/voices", self.tts_voices, methods=["GET"])
         self.router.add_api_route("/tts", self.tts, methods=["POST"])
         self.router.add_api_route("/device_setup/status", self.device_setup_status, methods=["GET"])
-
-        self.tlock = threading.Lock()
+        # pyttsx3/OS speech engines are not safe to drive concurrently.
+        self.tts_lock = asyncio.Lock()
 
     async def device_setup_status(self):
-        """Detect a system-wide virtual audio cable/mic for this OS. If present the
-        user can route VCClient output into it and pick it as the mic in any app.
-        Windows: VB-Cable ("CABLE Input"/"CABLE Output" device names).
-        macOS: BlackHole ("BlackHole" device name).
-        Linux: PulseAudio/PipeWire null-sink created by setup_virtual_mic_linux.sh
-        ("VoiceChangerMic" sink, "Monitor of VoiceChangerMic" source)."""
+        """Detect a system-wide virtual audio cable/mic for this OS."""
         try:
             from voice_changer.Local.AudioDeviceList import list_audio_device
 
-            audioinput, audiooutput = list_audio_device()
-
+            audioinput, audiooutput = await asyncio.to_thread(list_audio_device)
             if sys.platform.startswith("win"):
                 platformName = "windows"
                 playbackDevices = [{"index": d.index, "name": d.name} for d in audiooutput if "CABLE Input" in d.name]
@@ -76,120 +79,126 @@ class MMVC_Rest_VoiceChanger:
                 recordingDevices = [{"index": d.index, "name": d.name} for d in audioinput if "VoiceChangerMic" in d.name]
                 installUrl = None
                 hint = "Run 'bash setup_virtual_mic_linux.sh --autostart' from the repo root, restart VCClient, then set server output to 'VoiceChangerMic' and select 'Monitor of VoiceChangerMic' as microphone in your app."
-
             installed = len(playbackDevices) > 0
             return {
                 "status": "OK",
                 "platform": platformName,
                 "virtualCableInstalled": installed,
-                # VCClient should output INTO the playback device; apps record FROM the recording device.
                 "cablePlaybackDevices": playbackDevices,
                 "cableRecordingDevices": recordingDevices,
                 "installUrl": None if installed else installUrl,
                 "hint": None if installed else hint,
             }
-        except Exception as e:
-            return {"status": "Error", "message": str(e)}
+        except Exception as exc:
+            return failure(exc, "device_setup_status")
 
     async def play_sound(self, request: SoundRequest):
-        res = self.voiceChangerManager.play_sound(request.filename)
-        return {"status": "OK" if res else "Error"}
+        try:
+            res = await asyncio.to_thread(self.voiceChangerManager.play_sound, request.filename)
+            if not res:
+                return JSONResponse({"status": "ERROR", "msg": "soundboard queue is full or the clip could not be decoded"}, status_code=409)
+            return {"status": "OK"}
+        except Exception as exc:
+            return failure(exc, "play_sound")
 
     async def soundboard_list(self):
         try:
-            os.makedirs(SOUNDBOARD_DIR, exist_ok=True)
-            files = sorted(f for f in os.listdir(SOUNDBOARD_DIR) if os.path.isfile(os.path.join(SOUNDBOARD_DIR, f)))
-            return {"status": "OK", "files": files}
-        except Exception as e:
-            return {"status": "Error", "message": str(e)}
+            def list_files():
+                os.makedirs(SOUNDBOARD_DIR, exist_ok=True)
+                return sorted(f for f in os.listdir(SOUNDBOARD_DIR) if os.path.isfile(os.path.join(SOUNDBOARD_DIR, f)))
+            return {"status": "OK", "files": await asyncio.to_thread(list_files)}
+        except Exception as exc:
+            return failure(exc, "soundboard_list")
 
-    async def soundboard_upload(self, file: UploadFile = File(...), filename: str = Form(...)):
-        # Soundboard clips are short sound effects, not model files - cap size and
-        # extension here rather than in the shared upload_file() helper, which
-        # /upload_file also uses for legitimately multi-GB model uploads.
-        MAX_SOUNDBOARD_BYTES = 20 * 1024 * 1024  # 20MB
-        ALLOWED_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
+    async def soundboard_upload(self, file: UploadFile = File(...), filename: str = Form(..., max_length=255)):
         try:
             ext = os.path.splitext(filename)[1].lower()
-            if ext not in ALLOWED_EXTENSIONS:
-                return {"status": "Error", "message": f"unsupported file type {ext}"}
+            if ext not in SOUNDBOARD_EXTENSIONS:
+                raise ValueError(f"unsupported file type {ext}")
             if file.size is not None and file.size > MAX_SOUNDBOARD_BYTES:
-                return {"status": "Error", "message": "file too large (20MB limit)"}
-            res = upload_file(SOUNDBOARD_DIR, file, filename)
-            return res
-        except Exception as e:
-            return {"status": "Error", "message": str(e)}
+                from restapi.MMVC_Rest_Fileuploader import FileTooLarge
+                raise FileTooLarge("file too large (20MB limit)")
+            return await asyncio.to_thread(upload_file, SOUNDBOARD_DIR, LimitedUploadFile(file, MAX_SOUNDBOARD_BYTES), filename)
+        except Exception as exc:
+            return failure(exc, "soundboard_upload")
 
-    async def tts(self, request: TTSRequest):
-        MAX_TTS_CHARS = 500
-        if len(request.text) > MAX_TTS_CHARS:
-            return {"status": "Error", "message": f"text too long ({MAX_TTS_CHARS} char limit)"}
+    async def soundboard_stop(self):
+        try:
+            await asyncio.to_thread(self.voiceChangerManager.stop_sounds)
+            return {"status": "OK"}
+        except Exception as exc:
+            return failure(exc, "soundboard_stop")
+
+    async def soundboard_delete(self, request: SoundRequest):
+        try:
+            await asyncio.to_thread(self.voiceChangerManager.delete_sound, request.filename)
+            return {"status": "OK"}
+        except Exception as exc:
+            return failure(exc, "soundboard_delete")
+
+    async def tts_voices(self):
         try:
             import pyttsx3
-            import tempfile
-            import os
-            import asyncio
 
-            # pyttsx3 drives the OS's own TTS (SAPI5/NSSpeechSynthesizer/espeak) -
-            # fully local, no network call, unlike the cloud TTS this replaced.
+            def list_voices():
+                engine = pyttsx3.init()
+                try:
+                    return [
+                        {"id": v.id, "name": v.name, "languages": [x.decode(errors="replace") if isinstance(x, bytes) else str(x) for x in (v.languages or [])]}
+                        for v in engine.getProperty("voices")
+                    ]
+                finally:
+                    engine.stop()
+
+            async with self.tts_lock:
+                return {"status": "OK", "voices": await asyncio.to_thread(list_voices)}
+        except Exception as exc:
+            return failure(exc, "tts_voices")
+
+    async def tts(self, request: TTSRequest):
+        text = request.text.strip()
+        if not text:
+            return JSONResponse({"status": "ERROR", "msg": "text must not be empty"}, status_code=400)
+        try:
+            import pyttsx3
+
             fd, path = tempfile.mkstemp(suffix=".wav")
             os.close(fd)
 
             def synthesize():
                 engine = pyttsx3.init()
-                if request.voice:
-                    wanted = request.voice.lower()
-                    for v in engine.getProperty("voices"):
-                        if wanted in v.name.lower() or wanted in (v.id or "").lower():
-                            engine.setProperty("voice", v.id)
-                            break
-                engine.save_to_file(request.text, path)
-                engine.runAndWait()
+                try:
+                    if request.voice:
+                        wanted = request.voice.lower()
+                        match = next((v for v in engine.getProperty("voices") if wanted == (v.id or "").lower() or wanted in (v.name or "").lower()), None)
+                        if match is None:
+                            raise ValueError(f"unknown TTS voice: {request.voice}")
+                        engine.setProperty("voice", match.id)
+                    engine.save_to_file(text, path)
+                    engine.runAndWait()
+                finally:
+                    engine.stop()
 
             try:
-                # pyttsx3 blocks on the OS TTS engine - keep it off the event loop.
-                await asyncio.get_event_loop().run_in_executor(None, synthesize)
-                ok = self.voiceChangerManager.soundboard.add_sound(path)
+                async with self.tts_lock:
+                    await asyncio.to_thread(synthesize)
+                    ok = await asyncio.to_thread(self.voiceChangerManager.soundboard.add_sound, path)
             finally:
                 os.unlink(path)
-
             if ok:
                 return {"status": "OK"}
-            return {"status": "Error", "message": "failed to synthesize speech (no local TTS voice available on this OS?)"}
-        except ImportError:
-            return {"status": "Error", "message": "pyttsx3 not installed"}
-        except Exception as e:
-            return {"status": "Error", "message": str(e)}
+            return JSONResponse({"status": "ERROR", "msg": "soundboard queue is full or speech synthesis produced no audio"}, status_code=409)
+        except Exception as exc:
+            return failure(exc, "tts")
 
-    def test(self, voice: VoiceModel):
+    async def test(self, voice: VoiceModel):
         try:
-            timestamp = voice.timestamp
-            buffer = voice.buffer
-            wav = base64.b64decode(buffer)
-
-            # if wav == 0:
-            #     samplerate, data = read("dummy.wav")
-            #     unpackedData = data
-            # else:
-            #     unpackedData = np.array(
-            #         struct.unpack("<%sh" % (len(wav) // struct.calcsize("<h")), wav)
-            #     )
-
-            unpackedData = np.array(struct.unpack("<%sh" % (len(wav) // struct.calcsize("<h")), wav)).astype(np.int16)
-            # print(f"[REST] unpackedDataType {unpackedData.dtype}")
-
-            self.tlock.acquire()
-            changedVoice = self.voiceChangerManager.changeVoice(unpackedData)
-            self.tlock.release()
-
-            changedVoiceBase64 = base64.b64encode(changedVoice[0]).decode("utf-8")
-            data = {"timestamp": timestamp, "changedVoiceBase64": changedVoiceBase64}
-
-            json_compatible_item_data = jsonable_encoder(data)
-            return JSONResponse(content=json_compatible_item_data)
-
-        except Exception as e:
-            print("REQUEST PROCESSING!!!! EXCEPTION!!!", e)
-            print(traceback.format_exc())
-            self.tlock.release()
-            return str(e)
+            wav = base64.b64decode(voice.buffer, validate=True)
+            if len(wav) % 2 or not 0 < len(wav) <= 1024 * 1024:
+                raise ValueError("audio must be non-empty even-length PCM bytes, at most 1 MiB")
+            audio = np.frombuffer(wav, dtype="<i2").copy()
+            result = await asyncio.to_thread(self.voiceChangerManager.changeVoice, audio)
+            changed = np.asarray(result[0], dtype="<i2").tobytes()
+            return {"timestamp": voice.timestamp, "changedVoiceBase64": base64.b64encode(changed).decode("ascii")}
+        except Exception as exc:
+            return failure(exc, "test")

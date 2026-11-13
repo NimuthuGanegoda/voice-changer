@@ -1,3 +1,4 @@
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 import torch
 from const import EnumInferenceTypes
 
@@ -13,7 +14,7 @@ class RVCInferencerv2Nono(Inferencer):
         dev = DeviceManager.get_instance().getDevice(gpu)
         isHalf = DeviceManager.get_instance().halfPrecisionAvailable(gpu)
 
-        cpt = torch.load(file, map_location="cpu")
+        cpt = load_rvc_checkpoint(file)
         model = SynthesizerTrnMs768NSFsid_nono(*cpt["config"], is_half=isHalf)
 
         model.eval()

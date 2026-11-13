@@ -1,25 +1,56 @@
+from __future__ import annotations
+import asyncio
 import json
-import os
-from typing import Union
-from fastapi import APIRouter
+import logging
+from typing import Optional, Union, TYPE_CHECKING
+
+from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi import UploadFile, File, Form
-
-from restapi.mods.FileUploader import upload_file, concat_file_chunks
-from voice_changer.VoiceChangerManager import VoiceChangerManager
 
 from const import MODEL_DIR, UPLOAD_DIR
+from restapi.mods.FileUploader import concat_file_chunks, upload_file
 from voice_changer.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
+if TYPE_CHECKING:
+    from voice_changer.VoiceChangerManager import VoiceChangerManager
+
+logger = logging.getLogger(__name__)
 
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(MODEL_DIR, exist_ok=True)
+class FileTooLarge(ValueError):
+    pass
+
+
+class LimitedUploadFile:
+    """Bound actual chunk bytes, not the untrusted multipart Content-Length."""
+    def __init__(self, source, limit: int = 1024 * 1024):
+        self.source = source
+        self.limit = limit
+        self.file = self
+        self.remaining = limit
+
+    def read(self, size=-1):
+        if self.remaining <= 0:
+            extra = self.source.file.read(min(size, 1) if size >= 0 else 1)
+            if extra:
+                raise FileTooLarge(f"upload chunk exceeds {self.limit} bytes")
+            return b""
+        amount = min(size, self.remaining) if size >= 0 else self.remaining
+        chunk = self.source.file.read(amount)
+        self.remaining -= len(chunk)
+        return chunk
+
+
+def failure(exc: Exception, operation: str):
+    status = 413 if isinstance(exc, FileTooLarge) else 400 if isinstance(exc, (ValueError, KeyError, FileNotFoundError)) else 500
+    logger.exception("[REST] %s failed", operation)
+    return JSONResponse({"status": "ERROR", "msg": str(exc), "operation": operation}, status_code=status)
 
 
 class MMVC_Rest_Fileuploader:
     def __init__(self, voiceChangerManager: VoiceChangerManager):
         self.voiceChangerManager = voiceChangerManager
+        self.load_lock = asyncio.Lock()
         self.router = APIRouter()
         self.router.add_api_route("/info", self.get_info, methods=["GET"])
         self.router.add_api_route("/performance", self.get_performance, methods=["GET"])
@@ -32,114 +63,76 @@ class MMVC_Rest_Fileuploader:
         self.router.add_api_route("/update_model_default", self.post_update_model_default, methods=["POST"])
         self.router.add_api_route("/update_model_info", self.post_update_model_info, methods=["POST"])
         self.router.add_api_route("/upload_model_assets", self.post_upload_model_assets, methods=["POST"])
+        self.router.add_api_route("/delete_model", self.post_delete_model, methods=["POST"])
+        self.router.add_api_route("/model_type", self.get_model_type, methods=["GET"])
 
-    def post_upload_file(self, file: UploadFile = File(...), filename: str = Form(...)):
+    def _response(self, value, operation: str):
         try:
-            res = upload_file(UPLOAD_DIR, file, filename)
-            json_compatible_item_data = jsonable_encoder(res)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_upload_file ex:", e)
-
-    def post_concat_uploaded_file(self, filename: str = Form(...), filenameChunkNum: int = Form(...)):
-        try:
-            res = concat_file_chunks(UPLOAD_DIR, filename, filenameChunkNum, UPLOAD_DIR)
-            json_compatible_item_data = jsonable_encoder(res)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_concat_uploaded_file ex:", e)
+            return JSONResponse(jsonable_encoder(value))
+        except Exception as exc:
+            return failure(exc, operation)
 
     def get_info(self):
-        try:
-            info = self.voiceChangerManager.get_info()
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] get_info ex:", e)
+        return self._response(self.voiceChangerManager.get_info(), "info")
 
     def get_performance(self):
+        return self._response(self.voiceChangerManager.get_performance(), "performance")
+
+    def post_upload_file(self, file: UploadFile = File(...), filename: str = Form(...), upload_id: Optional[str] = Form(None)):
         try:
-            info = self.voiceChangerManager.get_performance()
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] get_performance ex:", e)
+            return upload_file(UPLOAD_DIR, LimitedUploadFile(file), filename, upload_id)
+        except Exception as exc:
+            return failure(exc, "upload_file")
+
+    def post_concat_uploaded_file(self, filename: str = Form(...), filenameChunkNum: int = Form(...), original_filename: Optional[str] = Form(None), upload_id: Optional[str] = Form(None)):
+        try:
+            # Assemble into the staging directory, not the live model directory.
+            # load_model atomically installs the files under the chosen slot.
+            return concat_file_chunks(UPLOAD_DIR, upload_id or filename, filenameChunkNum, UPLOAD_DIR, original_filename)
+        except Exception as exc:
+            return failure(exc, "concat_uploaded_file")
 
     def post_update_settings(self, key: str = Form(...), val: Union[int, str, float] = Form(...)):
         try:
-            print("[Voice Changer] update configuration:", key, val)
-            info = self.voiceChangerManager.update_settings(key, val)
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_update_settings ex:", e)
-            import traceback
-            traceback.print_exc()
+            return JSONResponse(jsonable_encoder(self.voiceChangerManager.update_settings(key, val)))
+        except Exception as exc:
+            return failure(exc, "update_settings")
 
-    def post_load_model(
-        self,
-        slot: int = Form(...),
-        isHalf: bool = Form(...),
-        params: str = Form(...),
-    ):
+    async def post_load_model(self, slot: int = Form(...), isHalf: bool = Form(...), params: str = Form(...)):
         try:
-            paramDict = json.loads(params)
-            print("paramDict", paramDict)
-            loadModelparams = LoadModelParams(**paramDict)
-            loadModelparams.files = [LoadModelParamFile(**x) for x in paramDict["files"]]
-            # print("paramDict", loadModelparams)
+            params = LoadModelParams.model_validate(json.loads(params))
+            if params.slot != slot:
+                raise ValueError("form slot does not match JSON slot")
+            params.files = [LoadModelParamFile.model_validate(file) for file in params.files]
+            async with self.load_lock:
+                result = await asyncio.to_thread(self.voiceChangerManager.loadModel, params)
+            return JSONResponse(jsonable_encoder(result if result is not None else {"status": "OK"}))
+        except Exception as exc:
+            return failure(exc, "load_model")
 
-            info = self.voiceChangerManager.loadModel(loadModelparams)
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_load_model ex:", e)
-            import traceback
-            traceback.print_exc()
-            
     def get_onnx(self):
         try:
-            info = self.voiceChangerManager.export2onnx()
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] get_onnx ex:", e)
-            import traceback
-            traceback.print_exc()
+            return JSONResponse(jsonable_encoder(self.voiceChangerManager.export2onnx()))
+        except Exception as exc:
+            return failure(exc, "onnx")
 
     def post_merge_models(self, request: str = Form(...)):
-        try:
-            print(request)
-            info = self.voiceChangerManager.merge_models(request)
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_merge_models ex:", e)
-            import traceback
-            traceback.print_exc()
+        return self._response(self.voiceChangerManager.merge_models(request), "merge_model")
 
     def post_update_model_default(self):
-        try:
-            info = self.voiceChangerManager.update_model_default()
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_update_model_default ex:", e)
-            import traceback
-            traceback.print_exc()
+        return self._response(self.voiceChangerManager.update_model_default(), "update_model_default")
 
     def post_update_model_info(self, newData: str = Form(...)):
-        try:
-            info = self.voiceChangerManager.update_model_info(newData)
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_update_model_info ex:", e)
+        return self._response(self.voiceChangerManager.update_model_info(newData), "update_model_info")
 
     def post_upload_model_assets(self, params: str = Form(...)):
+        return self._response(self.voiceChangerManager.upload_model_assets(params), "upload_model_assets")
+
+    def post_delete_model(self, slot: int = Form(...)):
         try:
-            info = self.voiceChangerManager.upload_model_assets(params)
-            json_compatible_item_data = jsonable_encoder(info)
-            return JSONResponse(content=json_compatible_item_data)
-        except Exception as e:
-            print("[Voice Changer] post_update_model_info ex:", e)
+            return JSONResponse(jsonable_encoder(self.voiceChangerManager.delete_model(slot)))
+        except Exception as exc:
+            return failure(exc, "delete_model")
+
+    def get_model_type(self):
+        return self._response(self.voiceChangerManager.get_info(), "model_type")

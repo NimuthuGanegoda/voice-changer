@@ -20,6 +20,7 @@ class MMVC_SocketIOApp:
         voiceChangerManager: VoiceChangerManager,
         allowedOrigins: Optional[Sequence[str]] = None,
         port: Optional[int] = None,
+        access_token: str | None = None,
     ):
         if cls._instance is None:
             logger.info("[Voice Changer] MMVC_SocketIOApp initializing...")
@@ -30,7 +31,7 @@ class MMVC_SocketIOApp:
             if allowedOrigins is not None:
                 normalized_origins = normalize_origins(allowedOrigins)
                 allowed_origins.update(normalized_origins)
-            sio = MMVC_SocketIOServer.get_instance(voiceChangerManager, list(allowed_origins))
+            sio = MMVC_SocketIOServer.get_instance(voiceChangerManager, list(allowed_origins), access_token)
 
             app_socketio = socketio.ASGIApp(
                 sio,

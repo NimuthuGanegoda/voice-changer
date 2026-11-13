@@ -1,0 +1,10 @@
+# Lightweight API/unit-test environment; no model weights or GPU runtime needed.
+pytest==8.4.2
+httpx==0.28.1
+fastapi==0.139.0
+python-multipart==0.0.32
+python-socketio==5.16.3
+requests==2.32.5
+tqdm==4.67.1
+numpy==2.2.6
+PyYAML==6.0.3

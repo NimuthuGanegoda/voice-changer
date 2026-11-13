@@ -5,7 +5,7 @@ import { IndexedDBStateAndMethod, useIndexedDB } from "./useIndexedDB";
 import { ServerSettingState, useServerSetting } from "./useServerSetting";
 import { useWorkletNodeSetting } from "./useWorkletNodeSetting";
 import { useWorkletSetting } from "./useWorkletSetting";
-import { ClientSetting, DefaultClientSettng, VoiceChangerClientSetting, WorkletNodeSetting, WorkletSetting } from "../const";
+import { ClientSetting, DefaultClientSetting, VoiceChangerClientSetting, WorkletNodeSetting, WorkletSetting } from "../const";
 import { InternalCallback } from "../client/VoiceChangerWorkletNode";
 
 export type UseClientProps = {
@@ -17,7 +17,7 @@ export type ClientState = {
     setting: ClientSetting;
     // 各種設定I/Fへの参照
     setVoiceChangerClientSetting: (_voiceChangerClientSetting: VoiceChangerClientSetting) => void;
-    setServerUrl: (url: string) => void;
+    setServerUrl: (url: string, openTab?: boolean, accessToken?: string) => void;
     start: () => Promise<void>;
     stop: () => Promise<void>;
     reloadClientSetting: () => Promise<void>;
@@ -70,7 +70,7 @@ const InitialPerformanceData: PerformanceData = {
 
 export const useClient = (props: UseClientProps): ClientState => {
     const [initialized, setInitialized] = useState<boolean>(false);
-    const [setting, setSetting] = useState<ClientSetting>(DefaultClientSettng);
+    const [setting, setSetting] = useState<ClientSetting>(DefaultClientSetting);
     // (1-1) クライアント
     const voiceChangerClientRef = useRef<VoiceChangerClient | null>(null);
     const [voiceChangerClient, setVoiceChangerClient] = useState<VoiceChangerClient | null>(voiceChangerClientRef.current);
@@ -171,9 +171,9 @@ export const useClient = (props: UseClientProps): ClientState => {
                     const postprocessTime = perf ? Math.ceil(perf[2] * 1000) : 0;
                     setPerformance({ responseTime, preprocessTime, mainprocessTime, postprocessTime });
                 },
-                notifyException: (mes: string) => {
+                notifyException: (_code, mes: string) => {
                     if (mes.length > 0) {
-                        console.log(`error:${mes}`);
+                        console.log(`error:${_code}: ${mes}`);
                         ioErrorCountRef.current += 1;
                         setIoErrorCount(ioErrorCountRef.current);
                     }
@@ -194,7 +194,11 @@ export const useClient = (props: UseClientProps): ClientState => {
             initializedResolveRef.current!();
             setInitialized(true);
         };
-        initialized();
+        initialized().catch((error) => {
+            console.error("Could not initialize audio client", error);
+            setIoErrorCount(++ioErrorCountRef.current);
+            initializedResolveRef.current?.();
+        });
     }, [props.audioContext]);
 
     const setAudioOutputElementId = (elemId: string) => {

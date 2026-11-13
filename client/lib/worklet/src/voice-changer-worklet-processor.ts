@@ -30,72 +30,53 @@ export type VoiceChangerWorkletProcessorResponse = {
     inputData?: Float32Array;
 };
 
-class VoiceChangerWorkletProcessor extends AudioWorkletProcessor {
+export class VoiceChangerWorkletProcessor extends AudioWorkletProcessor {
     private BLOCK_SIZE = 128;
     private initialized = false;
     private volume = 0;
-    // private numTrancateTreshold = 100;
-    // private volTrancateThreshold = 0.0005
-    // private volTrancateLength = 32
-    // private volTrancateCount = 0
-
+    // Legacy WorkletSetting keeps the volatility fields for API compatibility, but
+    // silent-block skipping is intentionally disabled because it caused audio gaps.
+    private maxPendingBlocks = 100;
     private isRecording = false;
 
     playBuffer: Float32Array[] = [];
     unpushedF32Data: Float32Array = new Float32Array(0);
-    /**
-     * @constructor
-     */
+
     constructor() {
         super();
-        console.log("[AudioWorkletProcessor] created.");
         this.initialized = true;
         this.port.onmessage = this.handleMessage.bind(this);
     }
 
     calcVol = (data: Float32Array, prevVol: number) => {
-        const sum = data.reduce((prev, cur) => {
-            return prev + cur * cur;
-        }, 0);
+        const sum = data.reduce((prev, cur) => prev + cur * cur, 0);
         const rms = Math.sqrt(sum / data.length);
         return Math.max(rms, prevVol * 0.95);
     };
 
     trancateBuffer = () => {
-        console.log("[worklet] Buffer truncated");
-        while (this.playBuffer.length > 2) {
-            this.playBuffer.shift();
-        }
+        while (this.playBuffer.length > 2) this.playBuffer.shift();
     };
-    handleMessage(event: any) {
-        const request = event.data as VoiceChangerWorkletProcessorRequest;
+
+    private trimOverflow = () => {
+        while (this.playBuffer.length > this.maxPendingBlocks) this.playBuffer.shift();
+    };
+
+    handleMessage(event: { data: VoiceChangerWorkletProcessorRequest }) {
+        const request = event.data;
+        if (!request) return;
         if (request.requestType === "config") {
-            // this.numTrancateTreshold = request.numTrancateTreshold;
-            // this.volTrancateLength = request.volTrancateLength
-            // this.volTrancateThreshold = request.volTrancateThreshold
-            console.log("[worklet] worklet configured", request);
+            const value = Number(request.numTrancateTreshold);
+            this.maxPendingBlocks = Number.isFinite(value) ? Math.max(2, Math.min(4096, Math.floor(value))) : 100;
+            this.trimOverflow();
             return;
         } else if (request.requestType === "start") {
-            if (this.isRecording) {
-                console.warn("[worklet] recoring is already started");
-                return;
-            }
             this.isRecording = true;
-            const startResponse: VoiceChangerWorkletProcessorResponse = {
-                responseType: "start_ok",
-            };
-            this.port.postMessage(startResponse);
+            this.port.postMessage({ responseType: "start_ok" } satisfies VoiceChangerWorkletProcessorResponse);
             return;
         } else if (request.requestType === "stop") {
-            if (!this.isRecording) {
-                console.warn("[worklet] recoring is not started");
-                return;
-            }
             this.isRecording = false;
-            const stopResponse: VoiceChangerWorkletProcessorResponse = {
-                responseType: "stop_ok",
-            };
-            this.port.postMessage(stopResponse);
+            this.port.postMessage({ responseType: "stop_ok" } satisfies VoiceChangerWorkletProcessorResponse);
             return;
         } else if (request.requestType === "trancateBuffer") {
             this.trancateBuffer();
@@ -103,89 +84,36 @@ class VoiceChangerWorkletProcessor extends AudioWorkletProcessor {
         }
 
         const f32Data = request.voice;
-        // if (this.playBuffer.length > this.numTrancateTreshold) {
-        //     console.log(`[worklet] Truncate ${this.playBuffer.length} > ${this.numTrancateTreshold}`);
-        //     this.trancateBuffer();
-        // }
-        if (this.playBuffer.length > (f32Data.length / this.BLOCK_SIZE) * 1.5) {
-            console.log(`[worklet] Truncate ${this.playBuffer.length} > ${f32Data.length / this.BLOCK_SIZE}`);
-            this.trancateBuffer();
-        }
-
+        if (!(f32Data instanceof Float32Array)) return;
         const concatedF32Data = new Float32Array(this.unpushedF32Data.length + f32Data.length);
         concatedF32Data.set(this.unpushedF32Data);
         concatedF32Data.set(f32Data, this.unpushedF32Data.length);
-
         const chunkNum = Math.floor(concatedF32Data.length / this.BLOCK_SIZE);
         for (let i = 0; i < chunkNum; i++) {
-            const block = concatedF32Data.slice(i * this.BLOCK_SIZE, (i + 1) * this.BLOCK_SIZE);
-            this.playBuffer.push(block);
+            this.playBuffer.push(concatedF32Data.slice(i * this.BLOCK_SIZE, (i + 1) * this.BLOCK_SIZE));
         }
         this.unpushedF32Data = concatedF32Data.slice(chunkNum * this.BLOCK_SIZE);
+        this.trimOverflow();
     }
 
     pushData = (inputData: Float32Array) => {
-        const volumeResponse: VoiceChangerWorkletProcessorResponse = {
-            responseType: ResponseType.inputData,
-            inputData: inputData,
-        };
-        this.port.postMessage(volumeResponse);
+        this.port.postMessage({ responseType: ResponseType.inputData, inputData } satisfies VoiceChangerWorkletProcessorResponse);
     };
 
-    process(_inputs: Float32Array[][], outputs: Float32Array[][], _parameters: Record<string, Float32Array>) {
-        if (!this.initialized) {
-            console.warn("[worklet] worklet_process not ready");
-            return true;
+    process(inputs: Float32Array[][], outputs: Float32Array[][], _parameters: Record<string, Float32Array>) {
+        if (!this.initialized || outputs.length === 0 || outputs[0].length === 0) return true;
+        if (this.isRecording && inputs.length > 0 && inputs[0].length > 0) {
+            this.pushData(inputs[0][0]);
         }
-
-        if (this.isRecording) {
-            if (_inputs.length > 0 && _inputs[0].length > 0) {
-                this.pushData(_inputs[0][0]);
-            }
-        }
-
-        if (this.playBuffer.length === 0) {
-            // console.log("[worklet] no play buffer");
-            return true;
-        }
-        // console.log("[worklet] play buffer");
-        //// 一定期間無音状態が続いている場合はスキップ。
-        // let voice: Float32Array | undefined
-        // while (true) {
-        //     voice = this.playBuffer.shift()
-        //     if (!voice) {
-        //         break
-        //     }
-        //     this.volume = this.calcVol(voice, this.volume)
-        //     if (this.volume < this.volTrancateThreshold) {
-        //         this.volTrancateCount += 1
-        //     } else {
-        //         this.volTrancateCount = 0
-        //     }
-
-        //     // V.1.5.0よりsilent skipで音飛びするようになったので無効化
-        //     if (this.volTrancateCount < this.volTrancateLength || this.volTrancateLength < 0) {
-        //         break
-        //     } else {
-        //         break
-        //         // console.log("silent...skip")
-        //     }
-        // }
-        let voice = this.playBuffer.shift();
+        const voice = this.playBuffer.shift();
         if (voice) {
             this.volume = this.calcVol(voice, this.volume);
-            const volumeResponse: VoiceChangerWorkletProcessorResponse = {
-                responseType: ResponseType.volume,
-                volume: this.volume,
-            };
-            this.port.postMessage(volumeResponse);
+            this.port.postMessage({ responseType: ResponseType.volume, volume: this.volume } satisfies VoiceChangerWorkletProcessorResponse);
             outputs[0][0].set(voice);
-            if (outputs[0].length == 2) {
-                outputs[0][1].set(voice);
-            }
+            if (outputs[0].length > 1) outputs[0][1].set(voice);
         }
-
         return true;
     }
 }
+
 registerProcessor("voice-changer-worklet-processor", VoiceChangerWorkletProcessor);

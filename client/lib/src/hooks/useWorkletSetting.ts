@@ -16,9 +16,13 @@ export const useWorkletSetting = (props: UseWorkletSettingProps): WorkletSetting
     const [setting, _setSetting] = useState<WorkletSetting>(props.workletSetting);
 
     useEffect(() => {
+        _setSetting(props.workletSetting);
+    }, [props.workletSetting]);
+
+    useEffect(() => {
         if (!props.voiceChangerClient) return;
         props.voiceChangerClient.configureWorklet(setting);
-    }, [props.voiceChangerClient, props.workletSetting]);
+    }, [props.voiceChangerClient, setting]);
 
     // // 設定 _setSettingがトリガでuseEffectが呼ばれて、workletに設定が飛ぶ
     // const setSetting = useMemo(() => {

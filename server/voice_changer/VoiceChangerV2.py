@@ -37,6 +37,7 @@ from Exceptions import (
     VoiceChangerIsNotSelectedException,
 )
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
+from voice_changer.utils.AudioSettings import updated_crossfade
 
 STREAM_INPUT_FILE = os.path.join(TMP_DIR, "in.wav")
 STREAM_OUTPUT_FILE = os.path.join(TMP_DIR, "out.wav")
@@ -131,6 +132,13 @@ class VoiceChangerV2(VoiceChangerIF):
             self.settings.inputSampleRate = 48000
             self.settings.outputSampleRate = 48000
             self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
+
+        if key in ("crossFadeOffsetRate", "crossFadeEndRate", "crossFadeOverlapSize"):
+            updated_crossfade(self.settings, key, val)
+        if key == "recordIO" and int(val) not in (0, 1, 2):
+            raise ValueError("recordIO must be 0, 1 or 2")
+        if key in ("inputSampleRate", "outputSampleRate") and int(val) not in (24000, 44100, 48000):
+            raise ValueError("voice-changer sample rate must be 24000, 44100 or 48000")
 
         if key in self.settings.intData:
             setattr(self.settings, key, int(val))

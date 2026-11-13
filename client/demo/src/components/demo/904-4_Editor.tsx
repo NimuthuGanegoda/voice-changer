@@ -28,7 +28,7 @@ export const EditorScreen = (props: EditorScreenProps) => {
         if (!targetSlot) {
             return
         }
-        const currentName = !!targetSlot.speakers[targetId] ? targetSlot.speakers[targetId] : ""
+        const currentName = targetSlot.speakers[targetId] || ""
         setTargetName(currentName)
 
     }, [targetId])

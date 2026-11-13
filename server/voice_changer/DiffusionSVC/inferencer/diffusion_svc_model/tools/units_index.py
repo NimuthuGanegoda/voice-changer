@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from tqdm import tqdm
-import pickle
+from voice_changer.utils.TrustedAssets import load_pickle
 import torch
 from pathlib import Path
 
@@ -57,7 +57,7 @@ class UnitsIndexer:
             self.spk_id = spk_id
             self.active = True
             with open(index_pkl_path, "rb") as f:
-                self.model = pickle.load(f)[str(spk_id)]
+                self.model = load_pickle(f.name)[str(spk_id)]
             self.big_all_npy = self.model.reconstruct_n(0, self.model.ntotal)
             print(f" [INFO]  Successfully load Units Indexer from {index_pkl_path}.")
 

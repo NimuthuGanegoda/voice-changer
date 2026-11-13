@@ -1,14 +1,7 @@
 export const createDummyMediaStream = (audioContext: AudioContext) => {
-    const dummyOutputNode = audioContext.createMediaStreamDestination();
-
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = 0.0;
-    gainNode.connect(dummyOutputNode);
-    const oscillatorNode = audioContext.createOscillator();
-    oscillatorNode.frequency.value = 440;
-    oscillatorNode.connect(gainNode);
-    oscillatorNode.start();
-    return dummyOutputNode.stream;
+    // A destination with no connected source is a silent, live MediaStream. The old
+    // oscillator was never stopped and leaked a running audio graph per setup.
+    return audioContext.createMediaStreamDestination().stream;
 };
 
 export const fileSelector = async (regex: string) => {
@@ -27,13 +20,14 @@ export const fileSelector = async (regex: string) => {
                 return null;
             }
 
-            if (regex != "" && target.files[0].type.match(regex)) {
+            if (regex != "" && !target.files[0].type.match(regex)) {
                 reject(`not target file type ${target.files[0].type}`);
                 return null;
             }
             resolve(target.files[0]);
             return null;
         };
+        fileInput.addEventListener("cancel", () => reject("no file selected"), { once: true });
         fileInput.click();
     });
     return await p;
@@ -45,12 +39,10 @@ export const fileSelectorAsDataURL = async (regex: string) => {
         return f;
     }
 
-    const url = await new Promise<string>((resolve) => {
+    const url = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-            console.log("load data", reader.result as string);
-            resolve(reader.result as string);
-        };
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error ?? new Error("could not read file"));
         reader.readAsDataURL(f);
     });
     return url;

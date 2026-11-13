@@ -1,66 +1,29 @@
-## VC Client for Docker
+# VCClient for Docker
 
-[Japanese](./README.md) 
-[Korean](./README.md)
+Build and run from the repository root. The image copies **this checkout** and
+builds the local client library/frontend; it never clones upstream master.
 
-## Build
-
-In root folder of repos.
-
-```
-npm run build:docker:vcclient
+```bash
+npm run build:docker:vcclient       # voice-changer:local
+./start_docker.sh                   # CPU, published only on 127.0.0.1:18888
 ```
 
-## preparation
+The launcher prints a generated access token unless `VCCLIENT_ACCESS_TOKEN` is
+already set. Open http://127.0.0.1:18888 and enter it under **Advanced Settings →
+Server connection**. Weights/models are downloaded on first use and persisted in
+`docker_folder/pretrain` and `docker_folder/model_dir`; you can also pre-populate
+those directories. Use `--no_download` via a custom `docker run` for offline use.
 
-Store weights of external models in `docker_vcclient/weights`. Which weights should be in the folder depends on which kind of VC you use.
+Options:
 
-```
-$ tree docker_vcclient/weights/
-docker_vcclient/weights/
-├── checkpoint_best_legacy_500.onnx
-├── checkpoint_best_legacy_500.pt
-├── hubert-soft-0d54a1f4.pt
-├── hubert_base.pt
-└── nsf_hifigan
-    ├── NOTICE.txt
-    ├── NOTICE.zh-CN.txt
-    ├── config.json
-    └── model
+```bash
+USE_GPU=on ./start_docker.sh        # requires NVIDIA Container Toolkit
+EX_PORT=19999 ./start_docker.sh
+DOCKER_IMAGE=voice-changer:v1 ./start_docker.sh
+VCCLIENT_ACCESS_TOKEN='your-long-random-token' ./start_docker.sh
 ```
 
-## Run
-
-In root folder of repos.
-
-```
-bash start_docker.sh
-```
-
-Access with Browser (currently only chrome is supported), then you can see gui.
-
-## RUN with options
-
-Without GPU
-
-```
-USE_GPU=off bash start_docker.sh
-```
-
-Specify port num
-
-```
-EX_PORT=<port> bash start_docker.sh
-```
-
-Use Local Image
-
-```
-USE_LOCAL=on bash start_docker.sh
-```
-
-## Push to Repo (only for devs)
-
-```
-npm run push:docker:vcclient
-```
+The container listens on `0.0.0.0` internally so Docker port publishing works,
+but the default published port is loopback-only and token-protected. To expose
+it deliberately, set `BIND_HOST`, use a TLS reverse proxy, keep the token secret,
+and allow the public browser origin. Do not publish an unauthenticated server.

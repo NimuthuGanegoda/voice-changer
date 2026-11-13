@@ -41,7 +41,7 @@ client/demo/public/models_
 client/demo/dist/models
 client/demo/dist_web
 client/demo/src/001_provider/backup
-# client/demo/dist/ # demo用に残す
+client/demo/dist/
 
 docker/cudnn/
 
@@ -77,3 +77,13 @@ beatrice_internal_api.cp310-win_amd64.pyd
 server/model_dir_static/Beatrice-JVS
 
 graphify-out/
+
+# Local tooling / generated artifacts
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.tsbuildinfo
+docker_folder/
+server/logs/
+server/data/soundboard/

@@ -1,24 +1,27 @@
 from typing import Optional, Sequence
 from urllib.parse import urlparse
 
-ENFORCE_URL_ORIGIN_FORMAT = "Input origins must be well-formed URLs, i.e. https://google.com or https://www.google.com."
-SCHEMAS = ('http', 'https')
-LOCAL_ORIGINS = ('127.0.0.1', 'localhost')
+SCHEMAS = ("http", "https")
+LOCAL_ORIGINS = ("127.0.0.1", "localhost")
+
 
 def compute_local_origins(port: Optional[int] = None) -> list[str]:
-    local_origins = [f'{schema}://{origin}' for schema in SCHEMAS for origin in LOCAL_ORIGINS]
-    if port is not None:
-        local_origins = [f'{origin}:{port}' for origin in local_origins]
-    return local_origins
+    suffix = f":{port}" if port is not None else ""
+    return [f"{scheme}://{host}{suffix}" for scheme in SCHEMAS for host in LOCAL_ORIGINS]
 
 
 def normalize_origins(origins: Sequence[str]) -> set[str]:
-    allowed_origins = set()
-    for origin in origins:
-        url = urlparse(origin)
-        assert url.scheme, ENFORCE_URL_ORIGIN_FORMAT
-        valid_origin = f'{url.scheme}://{url.hostname}'
-        if url.port:
-            valid_origin += f':{url.port}'
-        allowed_origins.add(valid_origin)
-    return allowed_origins
+    result = set()
+    for value in origins:
+        try:
+            url = urlparse(value)
+            port = url.port
+            if url.scheme not in SCHEMAS or not url.hostname or url.username or url.password or url.path or url.query or url.fragment:
+                raise ValueError
+            origin = f"{url.scheme}://{url.hostname.lower()}"
+            if port is not None:
+                origin += f":{port}"
+            result.add(origin)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid origin {value!r}; use http(s)://host[:port] without a path") from None
+    return result

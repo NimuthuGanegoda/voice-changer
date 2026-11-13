@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useMemo, useEffect } from "react";
 
 import { VoiceChangerClientSetting } from "../const";
 import { VoiceChangerClient } from "../VoiceChangerClient";
@@ -16,23 +16,10 @@ export type ClientSettingState = {
 };
 
 export const useClientSetting = (props: UseClientSettingProps): ClientSettingState => {
-    // 更新比較用
-    const [voiceChangerClientSetting, setVoiceChangerClientSetting] = useState<VoiceChangerClientSetting>(props.voiceChangerClientSetting);
-
     useEffect(() => {
-        const update = async () => {
-            if (!props.voiceChangerClient) return;
-            for (let k in props.voiceChangerClientSetting) {
-                const cur_v = voiceChangerClientSetting[k as keyof VoiceChangerClientSetting];
-                const new_v = props.voiceChangerClientSetting[k as keyof VoiceChangerClientSetting];
-                if (cur_v != new_v) {
-                    setVoiceChangerClientSetting(props.voiceChangerClientSetting);
-                    await props.voiceChangerClient.updateClientSetting(props.voiceChangerClientSetting);
-                    break;
-                }
-            }
-        };
-        update();
+        if (!props.voiceChangerClient) return;
+        props.voiceChangerClient.updateClientSetting(props.voiceChangerClientSetting)
+            .catch(error => console.error("Could not apply client settings", error));
     }, [props.voiceChangerClient, props.voiceChangerClientSetting]);
 
     const setServerUrl = useMemo(() => {

@@ -27,8 +27,8 @@ export const MergeLabDialog = () => {
                     return prev;
                 }
                 const curRVC = cur as RVCModelSlot;
-                const key = `${curRVC.modelType},${cur.samplingRate},${curRVC.embChannels}`;
-                const val = { type: curRVC.modelType, samplingRate: cur.samplingRate, embChannels: curRVC.embChannels };
+                const key = `${curRVC.modelType},${curRVC.samplingRate},${curRVC.embChannels}`;
+                const val = { type: curRVC.modelType, samplingRate: curRVC.samplingRate, embChannels: curRVC.embChannels };
                 const existKeys = Object.keys(prev);
                 if (!cur.modelFile || cur.modelFile.length == 0) {
                     return prev;
@@ -71,7 +71,7 @@ export const MergeLabDialog = () => {
     useEffect(() => {
         // models はフィルタ後の配列
         const newMergeElements = models.map((x) => {
-            return { slotIndex: x.slotIndex, filename: x.modelFile, strength: 0 };
+            return { slotIndex: Number(x.slotIndex), filename: x.modelFile, strength: 0 };
         });
         setMergeElements(newMergeElements);
     }, [models]);

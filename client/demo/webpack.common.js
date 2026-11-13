@@ -17,11 +17,8 @@ module.exports = {
                 test: [/\.ts$/, /\.tsx$/],
                 use: [
                     {
-                        loader: "babel-loader",
-                        options: {
-                            presets: ["@babel/preset-env", "@babel/preset-react", "@babel/preset-typescript"],
-                            plugins: ["@babel/plugin-transform-runtime"],
-                        },
+                        loader: "ts-loader",
+                        options: { configFile: "tsconfig.json", transpileOnly: true },
                     },
                 ],
             },

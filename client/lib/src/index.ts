@@ -5,3 +5,6 @@ export * from "./util";
 export * from "./hooks/useClient";
 export * from "./hooks/useIndexedDB";
 export * from "./hooks/useServerSetting";
+export * from "./hooks/useClientSetting";
+export * from "./hooks/useWorkletSetting";
+export * from "./hooks/useWorkletNodeSetting";

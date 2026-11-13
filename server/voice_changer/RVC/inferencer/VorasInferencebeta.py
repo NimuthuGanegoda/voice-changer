@@ -1,3 +1,4 @@
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 import torch
 from torch import device
 
@@ -14,7 +15,7 @@ class VoRASInferencer(Inferencer):
         dev = DeviceManager.get_instance().getDevice(gpu)
         self.isHalf = False  # DeviceManager.get_instance().halfPrecisionAvailable(gpu)
 
-        cpt = torch.load(file, map_location="cpu")
+        cpt = load_rvc_checkpoint(file)
         model = Synthesizer(**cpt["params"])
 
         model.eval()

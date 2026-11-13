@@ -12,10 +12,11 @@ class MMVC_SocketIOServer:
         cls,
         voiceChangerManager: VoiceChangerManager,
         allowedOrigins: list[str],
+        access_token: str | None = None,
     ):
         if cls._instance is None:
             sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=allowedOrigins)
-            namespace = MMVC_Namespace.get_instance(voiceChangerManager)
+            namespace = MMVC_Namespace.get_instance(voiceChangerManager, access_token)
             sio.register_namespace(namespace)
             cls._instance = sio
             return cls._instance

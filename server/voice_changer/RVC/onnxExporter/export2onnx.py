@@ -1,3 +1,4 @@
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 import os
 import json
 import torch
@@ -58,7 +59,7 @@ def export2onnx(gpu: int, modelSlot: RVCModelSlot):
 
 
 def _export2onnx(input_model, output_model, output_model_simple, is_half, metadata):
-    cpt = torch.load(input_model, map_location="cpu")
+    cpt = load_rvc_checkpoint(input_model)
     if is_half:
         dev = torch.device("cuda", index=0)
     else:

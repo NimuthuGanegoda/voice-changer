@@ -1,122 +1,119 @@
-## For Developper
+# Developer guide
 
-[Japanese](/README_dev_ja.md) [Russian](/README_dev_ru.md)
+## Prerequisites
 
-## Prerequisit
+- Python **3.10** (recommended and used by CI/release builds).
+- Node.js **22.15+** and npm **10+** (`.nvmrc` selects Node 22).
+- Linux/WSL2, Windows, or macOS. Linux audio device mode needs PortAudio and libsndfile:
+  `sudo apt-get install libportaudio2 libsndfile1`.
+- Docker Engine with BuildKit for the container path. NVIDIA Container Toolkit is
+  required only for `USE_GPU=on`.
 
-- Linux(ubuntu, debian) or WSL2, (not tested for other linux distributions and Mac)
-- Anaconda
+Do not clone a different upstream repository when developing this checkout.
 
-## Preparation
+## Python server
 
-1. Create anaconda virtual environment
-
-```
-$ conda create -n vcclient-dev python=3.10
-$ conda activate vcclient-dev
-```
-
-2. clone repository
-
-```
-$ git clone https://github.com/w-okada/voice-changer.git
-```
-
-## For Server Developer
-
-1. Install requirements
-
-```
-$ cd voice-changer/server
-$ pip install -r requirements.txt
+```bash
+python3.10 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r server/requirements.txt
+cd server
+python MMVCServerSIO.py -p 18888 --host 127.0.0.1
 ```
 
-2. Run server
+The default environment uses ONNX Runtime (DirectML on Windows, CUDA package on
+Linux, CPU package on macOS). NVIDIA CUDA also requires a compatible driver.
+CPU execution works without a GPU. The first normal startup downloads weights
+and sample catalogs into `server/pretrain` and `server/model_dir`.
 
-Run server with the below command. You can replace the path to each weight.
+For an offline startup with already-downloaded assets:
 
-```
-$ python3 MMVCServerSIO.py -p 18888 --https true \
-    --content_vec_500 pretrain/checkpoint_best_legacy_500.pt  \
-    --content_vec_500_onnx pretrain/content_vec_500.onnx \
-    --content_vec_500_onnx_on true \
-    --hubert_base pretrain/hubert_base.pt \
-    --hubert_base_jp pretrain/rinna_hubert_base_jp.pt \
-    --hubert_soft pretrain/hubert/hubert-soft-0d54a1f4.pt \
-    --nsf_hifigan pretrain/nsf_hifigan/model \
-    --crepe_onnx_full pretrain/crepe_onnx_full.onnx \
-    --crepe_onnx_tiny pretrain/crepe_onnx_tiny.onnx \
-    --rmvpe pretrain/rmvpe.pt \
-    --model_dir model_dir \
-    --samples samples.json
-
+```bash
+python MMVCServerSIO.py --no_download
 ```
 
-Access with Browser (currently only chrome is supported), then you can see gui.
+Legacy Fairseq HuBERT/ContentVec and so-vits-svc checkpoints need the alternative
+environment (do not install it over the default one):
 
-2-1. Trouble shoot
-
-(1) OSError: PortAudio library not found
-If you get the message below, you shold install additional library.
-
-```
-OSError: PortAudio library not found
+```bash
+pip install -r server/requirements-legacy.txt
+export VCCLIENT_TRUST_LEGACY_CHECKPOINTS=1  # only for checkpoints you trust
 ```
 
-You can install the library this command.
+Fairseq 0.12.2 requires the pinned NumPy 1.23.5 and Python 3.10. Prefer ONNX
+embedders for new models. Legacy checkpoint metadata is loaded through a scoped
+allowlist, not a process-wide `torch.load` monkeypatch.
 
-```
-$ sudo apt-get install libportaudio2
-$ sudo apt-get install libasound-dev
-```
+User-supplied RVC `.pth`/`.pt` checkpoints are loaded with `weights_only=True` by
+default. If a trusted legacy checkpoint needs unsafe pickle metadata, set
+`VCCLIENT_TRUST_MODEL_PICKLES=1` explicitly; the same opt-in covers pickle-based
+index/auxiliary assets. Never enable it for untrusted uploads.
 
-(2) It's not starting up! Damn software!
+## Client workspace
 
-The client will not start automatically. Please launch your browser and access the URL displayed on the console. And watch your words.
+Run these commands from the repository root. The root lockfile is authoritative;
+the demo links to the local `client/lib`, not the published npm package.
 
-(3) Could not load library libcudnn_cnn_infer.so.8
-
-When using WSL, you might encounter a message saying `Could not load library libcudnn_cnn_infer.so.8. Error: libcuda.so: cannot open shared object file: No such file or directory`. This often happens because the path hasn't been properly set. Please set the path as shown below. It might be handy to add this to your launch script, such as .bashrc.
-
-```
-export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
-```
-
-- reference
-  - https://qiita.com/cacaoMath/items/811146342946cdde5b83
-  - https://github.com/microsoft/WSL/issues/8587
-
-3. Enjoy developing.
-
-### Appendix
-
-1. Win + Anaconda (not supported)
-
-use conda to install pytorch
-
-```
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+```bash
+npm ci
+npm run typecheck          # emits the local library's declarations before checking the demo
+npm run lint
+npm test
+npm run build:client
 ```
 
-Also run these command.
+For frontend development, start the Python server on port 18888, then:
 
-```
-pip install chardet
-pip install numpy==1.24.0
-```
-
-## For Client Developer
-
-1. Import modules and initial build
-
-```
-cd client
-cd lib
-npm install
-npm run build:dev
-cd ../demo
-npm install
-npm run build:dev
+```bash
+VC_DEV_HTTPS=false npm run start:client
 ```
 
-2. Enjoy developing.
+Open the printed webpack URL. API and Socket.IO requests are proxied to
+`VC_BACKEND_URL` (default `http://127.0.0.1:18888`). HTTPS is enabled by default
+for local microphone access; set `VC_DEV_HTTPS=false` when an outer proxy already
+provides HTTPS. React is a peer dependency of the client library.
+
+## Tests
+
+```bash
+pip install -r server/requirements-dev.txt
+python -m pytest server/tests -q       # API, paths, rollback, downloads, settings, realtime
+npm run test:server                    # same suite; set PYTHON=/path/to/python to override
+npm test                              # Jest client tests + Node extension tests
+npm run typecheck && npm run lint
+```
+
+The lightweight Python suite skips runtime-backed manager tests when PyTorch is
+not installed. CI also performs a clean full-runtime import, runs the regression
+suite against the full dependencies, and builds/runs the Docker image from the
+checkout. Docker and GPU/audio-device behavior must be tested on a host with those
+facilities; the unit suite does not emulate a microphone or CUDA.
+
+## Docker
+
+```bash
+npm run build:docker:vcclient         # builds voice-changer:local from local source
+./start_docker.sh                     # CPU, loopback-only published port
+USE_GPU=on ./start_docker.sh          # NVIDIA GPU
+```
+
+The launcher prints a generated token if `VCCLIENT_ACCESS_TOKEN` is unset. Enter
+it in **Advanced Settings → Server connection**. Models and weights persist in
+`docker_folder/`. To expose the container beyond loopback, deliberately set
+`BIND_HOST`, keep the token secret, add the public origin with `--allowed-origins`,
+and put a TLS reverse proxy in front. Never expose an unauthenticated listener.
+
+## Remote access security
+
+`127.0.0.1`/`localhost` remains the default. Binding to any other address requires
+a token of at least 16 characters. REST accepts `Authorization: Bearer <token>`;
+Socket.IO accepts the same token in its connect auth payload. The demo stores the
+entered token in memory and obtains an HttpOnly cookie for same-origin requests.
+Origin checks are CSRF protection, not authentication.
+
+## Release artifacts
+
+`client/demo/dist`, `client/lib/dist`, and worklet bundles are generated and are
+not tracked. The Windows workflow builds the local library before the demo and
+then packages the server. Run `npm run build:client` before PyInstaller locally.

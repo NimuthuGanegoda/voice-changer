@@ -1,6 +1,27 @@
 ## VC Client
 
-[Japanese](/README_ja.md) [Korean](/README_ko.md) [Russian](/README_ru.md)
+[Quickstart and developer guide](README_dev.md)
+
+## Quickstart
+
+```bash
+# Python 3.10; Node 22 is needed only when building the frontend from source.
+python3.10 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r server/requirements.txt
+cd server
+python MMVCServerSIO.py -p 18888 --host 127.0.0.1
+```
+
+Open http://127.0.0.1:18888. The first startup downloads model weights/catalogs;
+add `--no_download` for offline use with cached assets. See the [developer guide](README_dev.md)
+for source builds, Docker, CPU/GPU details, tests, and remote-access tokens.
+
+Local conveniences:
+- The root URL serves the built frontend; `GET /api/health` is a public liveness/readiness probe.
+- The soundboard can play, stop, delete and upload clips, and local TTS can list/select OS voices.
+- Model slots can be deleted from the GUI (the loaded slot is protected).
+- Gain sliders accept `0` as mute; realtime audio has bounded queues and a five-minute recording cap.
 
 ## What's New!
 - We have released a sister product, the Text To Speech client.
@@ -133,7 +154,7 @@ Clone this repository and use it. Setting up WSL2 is essential for Windows. Addi
 
 To run docker, see [start docker](docker_vcclient/README_en.md).
 
-To run on Anaconda venv, see [server developer's guide](README_dev_en.md)
+To run on Anaconda venv, see [developer guide](README_dev.md)
 
 To run on Linux using an AMD GPU, see [setup guide linux](tutorials/tutorial_anaconda_amd_rocm.md)
 

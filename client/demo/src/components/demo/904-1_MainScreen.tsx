@@ -27,6 +27,7 @@ export const MainScreen = (props: MainScreenProps) => {
         messageBuilderState.setMessage(__filename, "sample", { ja: "サンプル", en: "DL sample" });
         messageBuilderState.setMessage(__filename, "upload", { ja: "アップロード", en: "upload" });
         messageBuilderState.setMessage(__filename, "edit", { ja: "編集", en: "edit" });
+        messageBuilderState.setMessage(__filename, "delete", { ja: "削除", en: "delete" });
         messageBuilderState.setMessage(__filename, "close", { ja: "閉じる", en: "close" });
     }, []);
 
@@ -66,6 +67,19 @@ export const MainScreen = (props: MainScreenProps) => {
             if (text.length > 0) {
                 console.log("input text:", text);
                 await serverSetting.updateModelInfo(index, "name", text);
+            }
+        };
+
+        const deleteAction = async (index: number, name: string) => {
+            if (serverSetting.serverSetting.modelSlotIndex === index) {
+                alert("Select a different model slot before deleting this one.");
+                return;
+            }
+            if (!window.confirm(`Delete model slot ${index} (${name || "blank"})? This cannot be undone.`)) return;
+            try {
+                await serverSetting.deleteModel(index);
+            } catch (error) {
+                alert(error instanceof Error ? error.message : String(error));
             }
         };
 
@@ -265,6 +279,11 @@ export const MainScreen = (props: MainScreenProps) => {
                         >
                             {messageBuilderState.getMessage(__filename, "edit")}
                         </div>
+                        {x.voiceChangerType ? (
+                            <div className="model-slot-button" onClick={() => deleteAction(index, x.name)}>
+                                {messageBuilderState.getMessage(__filename, "delete")}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             );

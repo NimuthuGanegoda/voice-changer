@@ -1,7 +1,7 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-from downloader.Downloader import download
+from downloader.Downloader import download, sha256_file
 from mods.log_control import VoiceChangaerLogger
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 from Exceptions import WeightDownladException
@@ -30,6 +30,7 @@ def downloadWeight(voiceChangerParams: VoiceChangerParams):
         crepe_onnx_full,
         crepe_onnx_tiny,
         rmvpe,
+        rmvpe_onnx,
         whisper_tiny,
     ]
 
@@ -138,17 +139,33 @@ def downloadWeight(voiceChangerParams: VoiceChangerParams):
             }
         )
 
-    with ThreadPoolExecutor() as pool:
-        pool.map(download, downloadParams)
-
-    if os.path.exists(hubert_base) is False or os.path.exists(hubert_base_jp) is False or os.path.exists(hubert_soft) is False or os.path.exists(nsf_hifigan) is False or os.path.exists(nsf_hifigan_config) is False:
-        raise WeightDownladException()
-
-    # ファイルサイズをログに書き込む。（デバッグ用）
+    # Operators can supply a local mirror without editing source. Example:
+    # VCCLIENT_WEIGHT_URL_WHISPER_TINY=https://mirror.example/tiny.pt
+    for item in downloadParams:
+        key = next((name for name, path in vars(voiceChangerParams).items() if path == item["saveTo"]), None)
+        if key:
+            item["url"] = os.getenv(f"VCCLIENT_WEIGHT_URL_{key.upper()}", item["url"])
+            item["sha256"] = os.getenv(f"VCCLIENT_WEIGHT_SHA256_{key.upper()}")
+        # OpenAI publishes the SHA-256 as the penultimate URL path component.
+        if item["saveTo"] == whisper_tiny and not item.get("sha256"):
+            candidate = item["url"].rstrip("/").split("/")[-2]
+            if len(candidate) == 64:
+                item["sha256"] = candidate
+    failures = []
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [(item, pool.submit(download, item)) for item in downloadParams]
+    for item, future in futures:
+        try:
+            future.result()
+        except Exception as exc:
+            if item["saveTo"] == whisper_tiny:
+                logger.warning("Optional Whisper weight unavailable: %s. Set VCCLIENT_WEIGHT_URL_WHISPER_TINY to a mirror if needed.", exc)
+            else:
+                failures.append(str(exc))
+    if failures:
+        raise WeightDownladException("; ".join(failures))
     for weight in weight_files:
-        if os.path.exists(weight):
-            file_size = os.path.getsize(weight)
-            logger.debug(f"weight file [{weight}]: {file_size}")
-        else:
-            logger.warning(f"weight file is missing. {weight}")
-            raise WeightDownladException()
+        if os.path.isfile(weight):
+            logger.debug("weight file [%s]: %s bytes", weight, os.path.getsize(weight))
+        elif weight != whisper_tiny:
+            raise WeightDownladException(f"required weight is missing: {weight}")

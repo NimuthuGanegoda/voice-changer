@@ -1,76 +1,52 @@
-from typing import Dict, Any
+from __future__ import annotations
+
 import os
 from collections import OrderedDict
-import torch
-from voice_changer.ModelSlotManager import ModelSlotManager
+from typing import Any
 
-from voice_changer.utils.ModelMerger import ModelMergerRequest
+from voice_changer.ModelSlotManager import ModelSlotManager
+from voice_changer.utils.ModelMerger import ModelMergerRequest, validate_merge_compatibility
+from voice_changer.utils.ModelPaths import model_slot_path, resolve_under, safe_filename
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 
 
-def merge_model(params: VoiceChangerParams, request: ModelMergerRequest):
-    def extract(ckpt: Dict[str, Any]):
-        a = ckpt["model"]
-        opt: Dict[str, Any] = OrderedDict()
-
-        opt["weight"] = {}
-        for key in a.keys():
-            if "enc_q" in key:
-                continue
-            opt["weight"][key] = a[key]
-        return opt
-
-    def load_weight(path: str):
-        print(f"Loading {path}...")
-        state_dict = torch.load(path, map_location="cpu")
-        if "model" in state_dict:
-            weight = extract(state_dict)
+def merge_model(params: VoiceChangerParams, request: ModelMergerRequest) -> dict[str, Any]:
+    request = ModelMergerRequest.model_validate(request)
+    slot_manager = ModelSlotManager.get_instance(params.model_dir)
+    weights: list[dict] = []
+    checkpoints: list[dict] = []
+    strengths: list[int] = []
+    for element in request.files:
+        slot = slot_manager.get_slot_info(element.slotIndex)
+        if slot is None or slot.voiceChangerType != "RVC" or not getattr(slot, "modelFile", ""):
+            raise ValueError(f"slot {element.slotIndex} does not contain an RVC model")
+        if getattr(slot, "isONNX", False):
+            raise ValueError("ONNX models cannot be merged; export the merged PyTorch model afterwards")
+        filename = safe_filename(os.path.basename(slot.modelFile))
+        path = resolve_under(model_slot_path(params.model_dir, element.slotIndex), filename, must_exist=True)
+        checkpoint = load_rvc_checkpoint(str(path))
+        if "model" in checkpoint:
+            weight = {key: value for key, value in checkpoint["model"].items() if "enc_q" not in key}
+        elif "weight" in checkpoint:
+            weight = checkpoint["weight"]
         else:
-            weight = state_dict["weight"]
-        return weight, state_dict
-
-    files = request.files
-    if len(files) == 0:
-        print("no merge file..............")
-        raise RuntimeError("no merge file..............")
-
-    weights = []
-    alphas = []
-    slotManager = ModelSlotManager.get_instance(params.model_dir)
-    for f in files:
-        strength = f.strength
-        if strength == 0:
-            continue
-        slotInfo = slotManager.get_slot_info(f.slotIndex)
-
-        filename = os.path.join(params.model_dir, str(f.slotIndex), os.path.basename(slotInfo.modelFile))  # slotInfo.modelFileはv.1.5.3.11以前はmodel_dirから含まれている。
-
-        weight, state_dict = load_weight(filename)
+            raise ValueError(f"slot {element.slotIndex} has neither model nor weight tensors")
         weights.append(weight)
-        alphas.append(f.strength)
+        checkpoints.append(checkpoint)
+        strengths.append(element.strength)
 
-    alphas = [x / sum(alphas) for x in alphas]
-
-    for weight in weights:
-        if sorted(list(weight.keys())) != sorted(list(weights[0].keys())):
-            raise RuntimeError("Failed to merge models.")
-
-    merged: Dict[str, Any] = OrderedDict()
-    merged["weight"] = {}
-    print("merge start.")
-    for key in weights[0].keys():
-        merged["weight"][key] = 0
-        for i, weight in enumerate(weights):
-            merged["weight"][key] += weight[key] * alphas[i]
-    print("merge done. write metadata.")
-
-    merged["config"] = state_dict["config"]
-    merged["params"] = state_dict["params"] if "params" in state_dict else None
-    merged["version"] = state_dict["version"] if "version" in state_dict else None
-    merged["sr"] = state_dict["sr"]
-    merged["f0"] = state_dict["f0"]
-    merged["info"] = state_dict["info"]
-    merged["embedder_name"] = state_dict["embedder_name"] if "embedder_name" in state_dict else None
-    merged["embedder_output_layer"] = state_dict["embedder_output_layer"] if "embedder_output_layer" in state_dict else None
-    print("write metadata done.")
+    validate_merge_compatibility(weights, checkpoints)
+    total = sum(strengths)
+    merged: dict[str, Any] = OrderedDict()
+    merged["weight"] = OrderedDict()
+    for key, tensor in weights[0].items():
+        value = tensor * (strengths[0] / total)
+        for weight, strength in zip(weights[1:], strengths[1:]):
+            value = value + weight[key] * (strength / total)
+        merged["weight"][key] = value
+    # Metadata must describe every input, not whichever checkpoint happened to load last.
+    for key in ("config", "params", "version", "sr", "f0", "info", "embedder_name", "embedder_output_layer"):
+        if key in checkpoints[0]:
+            merged[key] = checkpoints[0][key]
     return merged

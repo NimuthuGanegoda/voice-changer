@@ -1,11 +1,11 @@
 #!/bin/bash
-set -eu
+set -euo pipefail
 
 # Navigate to the voice-changer directory
 cd "$(dirname "$0")"
 
 if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 not found. Install Python 3.10+ first." >&2
+    echo "python3 not found. Install Python 3.10 first (3.10 is the tested release version)." >&2
     exit 1
 fi
 
@@ -17,12 +17,14 @@ if [ ! -f "venv/bin/activate" ]; then
     exit 1
 fi
 
+python3 -c 'import sys; assert sys.version_info >= (3, 10), "Python 3.10+ is required"'
+
 # Activate the existing virtual environment
 source venv/bin/activate
 
 # Start the server with the necessary arguments
 cd server
-python3 MMVCServerSIO.py -p 18888 \
+exec python3 MMVCServerSIO.py -p 18888 \
     --content_vec_500 pretrain/checkpoint_best_legacy_500.pt \
     --content_vec_500_onnx pretrain/content_vec_500.onnx \
     --content_vec_500_onnx_on true \
@@ -36,6 +38,4 @@ python3 MMVCServerSIO.py -p 18888 \
     --host 127.0.0.1 \
     --test_connect 127.0.0.1 \
     --model_dir model_dir \
-    --samples samples.json
-
-echo "Server started on http://127.0.0.1:18888"
+    "$@"

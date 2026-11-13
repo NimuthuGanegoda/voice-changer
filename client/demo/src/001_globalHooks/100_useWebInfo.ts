@@ -1,5 +1,5 @@
 import { ClientState, WebModelSlot } from "@dannadori/voice-changer-client-js";
-import { VoiceChangerJSClientConfig, VoiceChangerJSClient, ProgressUpdateType, ProgreeeUpdateCallbcckInfo, VoiceChangerType, InputLengthKey, ResponseTimeInfo } from "@dannadori/voice-changer-js";
+import { VoiceChangerJSClientConfig, VoiceChangerJSClient, ProgressUpdateType, ProgreeeUpdateCallbcckInfo, VoiceChangerType, InputLengthKey, ResponseTimeInfo } from "../legacyVoiceChanger";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export type UseWebInfoProps = {
@@ -54,18 +54,22 @@ const noF0ModelUrl: { [modelType in VoiceChangerType]: { [inputLength in InputLe
         "24000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_nof0_24000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_nof0_24000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_nof0_24000.bin",
         },
         "16000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_nof0_16000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_nof0_16000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_nof0_16000.bin",
         },
         "12000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_nof0_12000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_nof0_12000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_nof0_12000.bin",
         },
         "8000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_nof0_8000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_nof0_8000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_nof0_8000.bin",
         },
     },
     rvcv2: {
@@ -96,28 +100,32 @@ const f0ModelUrl: { [modelType in VoiceChangerType]: { [inputLength in InputLeng
         "24000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_f0_24000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_f0_24000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_f0_24000.bin",
         },
         "16000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_f0_16000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_f0_16000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_f0_16000.bin",
         },
         "12000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_f0_12000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_f0_12000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_f0_12000.bin",
         },
         "8000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_40k_f0_8000.bin",
             "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_32k_f0_8000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv1_amitaro_v1_16k_f0_8000.bin",
         },
     },
     rvcv2: {
         "24000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv2_amitaro_v2_40k_f0_24000.bin",
             // "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv2_amitaro_v2_32k_f0_24000.bin",
-            "32k": "https://192.168.0.247:8080/models/rvcv2_exp_v2_32k_f0_24000.bin",
+            "32k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv2_amitaro_v2_32k_f0_24000.bin",
             // "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv2_amitaro_v2_16k_f0_24000.bin",
             // "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/vctk/rvcv2_vctk_v2_16k_f0_24000.bin",
-            "16k": "https://192.168.0.247:8080/models/rvcv2_vctk_v2_16k_f0_24000.bin",
+            "16k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/vctk/rvcv2_vctk_v2_16k_f0_24000.bin",
         },
         "16000": {
             "40k": "https://huggingface.co/wok000/vcclient_model/resolve/main/web_model/v_01_alpha/amitaro/rvcv2_amitaro_v2_40k_f0_16000.bin",
