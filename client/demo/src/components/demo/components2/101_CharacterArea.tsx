@@ -206,7 +206,7 @@ export const CharacterArea = (_props: CharacterAreaProps) => {
                         <span className="character-area-slider-control-slider">
                             <input
                                 type="range"
-                                min="0.1"
+                                min="0.0"
                                 max="10.0"
                                 step="0.1"
                                 value={currentInputGain}
@@ -223,7 +223,7 @@ export const CharacterArea = (_props: CharacterAreaProps) => {
                         <span className="character-area-slider-control-slider">
                             <input
                                 type="range"
-                                min="0.1"
+                                min="0.0"
                                 max="10.0"
                                 step="0.1"
                                 value={currentOutputGain}
@@ -258,14 +258,19 @@ export const CharacterArea = (_props: CharacterAreaProps) => {
 
             document.getElementById("dialog")?.classList.add("dialog-container-show");
             guiState.stateControls.showWaitingCheckbox.updateState(true);
-            const res = (await serverSetting.getOnnx()) as OnnxExporterInfo;
-            const a = document.createElement("a");
-            a.href = res.path;
-            a.download = res.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            guiState.stateControls.showWaitingCheckbox.updateState(false);
+            try {
+                const res = (await serverSetting.getOnnx()) as OnnxExporterInfo;
+                const a = document.createElement("a");
+                a.href = res.path;
+                a.download = res.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } catch (error) {
+                alert(error instanceof Error ? error.message : String(error));
+            } finally {
+                guiState.stateControls.showWaitingCheckbox.updateState(false);
+            }
         };
 
         const exportOnnx =
@@ -311,7 +316,7 @@ export const CharacterArea = (_props: CharacterAreaProps) => {
                 </div>
             </div>
         );
-    }, [startControl, gainControl, modelSlotControl]);
+    }, [nameArea, startControl, gainControl, modelSlotControl]);
 
     return characterArea;
 };

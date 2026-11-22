@@ -5,10 +5,11 @@ import base64
 import os
 import sys
 import tempfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 from fastapi import APIRouter, File, Form, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,17 @@ class TTSRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_TTS_CHARS)
     # Empty = use the OS default voice. Otherwise an id/name returned by /tts/voices.
     voice: str = Field(default="", max_length=255)
+    # Optional speech speed in words per minute (OS engine default when omitted).
+    rate: Optional[int] = Field(default=None, ge=50, le=400)
+
+
+class PresetSaveRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    settings: Optional[dict[str, Any]] = None
+
+
+class PresetNameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
 
 
 class MMVC_Rest_VoiceChanger:
@@ -46,11 +58,16 @@ class MMVC_Rest_VoiceChanger:
         self.router.add_api_route("/test", self.test, methods=["POST"])
         self.router.add_api_route("/play_sound", self.play_sound, methods=["POST"])
         self.router.add_api_route("/soundboard/list", self.soundboard_list, methods=["GET"])
+        self.router.add_api_route("/soundboard/status", self.soundboard_status, methods=["GET"])
         self.router.add_api_route("/soundboard/upload", self.soundboard_upload, methods=["POST"])
         self.router.add_api_route("/soundboard/stop", self.soundboard_stop, methods=["POST"])
         self.router.add_api_route("/soundboard/delete", self.soundboard_delete, methods=["POST"])
         self.router.add_api_route("/tts/voices", self.tts_voices, methods=["GET"])
         self.router.add_api_route("/tts", self.tts, methods=["POST"])
+        self.router.add_api_route("/presets", self.presets_list, methods=["GET"])
+        self.router.add_api_route("/presets/save", self.presets_save, methods=["POST"])
+        self.router.add_api_route("/presets/apply", self.presets_apply, methods=["POST"])
+        self.router.add_api_route("/presets/delete", self.presets_delete, methods=["POST"])
         self.router.add_api_route("/device_setup/status", self.device_setup_status, methods=["GET"])
         # pyttsx3/OS speech engines are not safe to drive concurrently.
         self.tts_lock = asyncio.Lock()
@@ -136,6 +153,41 @@ class MMVC_Rest_VoiceChanger:
         except Exception as exc:
             return failure(exc, "soundboard_delete")
 
+    async def soundboard_status(self):
+        try:
+            status = await asyncio.to_thread(self.voiceChangerManager.get_soundboard_status)
+            return {"status": "OK", **status}
+        except Exception as exc:
+            return failure(exc, "soundboard_status")
+
+    async def presets_list(self):
+        try:
+            presets = await asyncio.to_thread(self.voiceChangerManager.list_presets)
+            return {"status": "OK", "presets": presets}
+        except Exception as exc:
+            return failure(exc, "presets_list")
+
+    async def presets_save(self, request: PresetSaveRequest):
+        try:
+            saved = await asyncio.to_thread(self.voiceChangerManager.save_preset, request.name, request.settings)
+            return {"status": "OK", "name": request.name.strip(), "settings": saved}
+        except Exception as exc:
+            return failure(exc, "presets_save")
+
+    async def presets_apply(self, request: PresetNameRequest):
+        try:
+            info = await asyncio.to_thread(self.voiceChangerManager.apply_preset, request.name)
+            return JSONResponse(jsonable_encoder(info))
+        except Exception as exc:
+            return failure(exc, "presets_apply")
+
+    async def presets_delete(self, request: PresetNameRequest):
+        try:
+            await asyncio.to_thread(self.voiceChangerManager.delete_preset, request.name)
+            return {"status": "OK"}
+        except Exception as exc:
+            return failure(exc, "presets_delete")
+
     async def tts_voices(self):
         try:
             import pyttsx3
@@ -174,6 +226,8 @@ class MMVC_Rest_VoiceChanger:
                         if match is None:
                             raise ValueError(f"unknown TTS voice: {request.voice}")
                         engine.setProperty("voice", match.id)
+                    if request.rate is not None:
+                        engine.setProperty("rate", request.rate)
                     engine.save_to_file(text, path)
                     engine.runAndWait()
                 finally:

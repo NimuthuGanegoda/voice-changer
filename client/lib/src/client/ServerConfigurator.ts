@@ -1,4 +1,4 @@
-import { MergeModelRequest, ServerSettingKey } from "../const";
+import { MergeModelRequest, ServerSettingKey, VoicePresetSettings } from "../const";
 import { ServerRestClient } from "./ServerRestClient";
 
 export class ServerConfigurator {
@@ -24,12 +24,15 @@ export class ServerConfigurator {
         return this.restClient.playSound(filename);
     };
 
-    tts = async (text: string, voice: string = "") => {
-        return this.restClient.tts(text, voice);
+    tts = async (text: string, voice: string = "", rate?: number) => {
+        return this.restClient.tts(text, voice, rate);
     };
 
     getSoundboardList = async () => {
         return this.restClient.getSoundboardList();
+    };
+    getSoundboardStatus = async () => {
+        return this.restClient.getSoundboardStatus();
     };
     stopSounds = async () => {
         return this.restClient.stopSounds();
@@ -43,6 +46,18 @@ export class ServerConfigurator {
 
     uploadSoundboardFile = async (file: File) => {
         return this.restClient.uploadSoundboardFile(file);
+    };
+    getPresets = async () => {
+        return this.restClient.getPresets();
+    };
+    savePreset = async (name: string, settings?: VoicePresetSettings) => {
+        return this.restClient.savePreset(name, settings);
+    };
+    applyPreset = async (name: string) => {
+        return this.restClient.applyPreset(name);
+    };
+    deletePreset = async (name: string) => {
+        return this.restClient.deletePreset(name);
     };
 
     updateSettings = async (key: ServerSettingKey, val: string) => {

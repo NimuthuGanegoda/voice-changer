@@ -246,9 +246,13 @@ if __name__ == "__main__":
             printMessage(f"http://localhost:{EX_PORT}/", level=1)
     else:  # 直接python起動
         if args.https == 1:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect((args.test_connect, 80))
-            hostname = s.getsockname()[0]
+            hostname = HOST
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect((args.test_connect, 80))
+                    hostname = s.getsockname()[0]
+            except OSError:
+                pass
             printMessage(f"https://localhost:{PORT}/", level=1)
             printMessage(f"https://{hostname}:{PORT}/", level=1)
         else:

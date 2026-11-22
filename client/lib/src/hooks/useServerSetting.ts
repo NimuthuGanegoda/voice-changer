@@ -8,6 +8,9 @@ import {
   VoiceChangerType,
   DefaultServerSetting,
   DeviceSetupStatus,
+  SoundboardStatus,
+  VoicePresetMap,
+  VoicePresetSettings,
 } from "../const";
 import { VoiceChangerClient } from "../VoiceChangerClient";
 
@@ -94,12 +97,17 @@ export type ServerSettingState = {
   getOnnx: () => Promise<OnnxExporterInfo>;
   getDeviceSetupStatus: () => Promise<DeviceSetupStatus | null>;
   playSound: (filename: string) => Promise<{ status: string; message?: string } | void>;
-  tts: (text: string, voice?: string) => Promise<{ status: string; message?: string } | void>;
+  tts: (text: string, voice?: string, rate?: number) => Promise<{ status: string; message?: string } | void>;
   getSoundboardList: () => Promise<{ status: string; files?: string[]; message?: string }>;
+  getSoundboardStatus: () => Promise<SoundboardStatus | null>;
   stopSounds: () => Promise<{ status: string; message?: string } | void>;
   deleteSound: (filename: string) => Promise<{ status: string; message?: string } | void>;
   getTtsVoices: () => Promise<{ status: string; voices?: { id: string; name: string; languages: string[] }[]; message?: string }>;
   uploadSoundboardFile: (file: File) => Promise<{ status: string; message?: string } | void>;
+  getPresets: () => Promise<{ status: string; presets?: VoicePresetMap; message?: string }>;
+  savePreset: (name: string, settings?: VoicePresetSettings) => Promise<{ status: string; name?: string; settings?: VoicePresetSettings; message?: string } | void>;
+  applyPreset: (name: string) => Promise<ServerInfo | void>;
+  deletePreset: (name: string) => Promise<{ status: string; message?: string } | void>;
   mergeModel: (request: MergeModelRequest) => Promise<ServerInfo>;
   updateModelDefault: () => Promise<ServerInfo>;
   updateModelInfo: (
@@ -238,14 +246,18 @@ export const useServerSetting = (
     return props.voiceChangerClient.playSound(filename);
   };
 
-  const tts = async (text: string, voice: string = "") => {
+  const tts = async (text: string, voice: string = "", rate?: number) => {
     if (!props.voiceChangerClient) return;
-    return props.voiceChangerClient.tts(text, voice);
+    return props.voiceChangerClient.tts(text, voice, rate);
   };
 
   const getSoundboardList = async () => {
     if (!props.voiceChangerClient) return { status: "Error", files: [] };
     return props.voiceChangerClient.getSoundboardList();
+  };
+  const getSoundboardStatus = async () => {
+    if (!props.voiceChangerClient) return null;
+    return props.voiceChangerClient.getSoundboardStatus();
   };
   const stopSounds = async () => {
     if (!props.voiceChangerClient) return;
@@ -263,6 +275,25 @@ export const useServerSetting = (
   const uploadSoundboardFile = async (file: File) => {
     if (!props.voiceChangerClient) return;
     return props.voiceChangerClient.uploadSoundboardFile(file);
+  };
+
+  const getPresets = async () => {
+    if (!props.voiceChangerClient) return { status: "Error", presets: {} };
+    return props.voiceChangerClient.getPresets();
+  };
+  const savePreset = async (name: string, settings?: VoicePresetSettings) => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.savePreset(name, settings);
+  };
+  const applyPreset = async (name: string) => {
+    if (!props.voiceChangerClient) return;
+    const serverInfo = await props.voiceChangerClient.applyPreset(name);
+    setServerSetting(serverInfo);
+    return serverInfo;
+  };
+  const deletePreset = async (name: string) => {
+    if (!props.voiceChangerClient) return;
+    return props.voiceChangerClient.deletePreset(name);
   };
 
   const mergeModel = async (request: MergeModelRequest) => {
@@ -304,10 +335,15 @@ export const useServerSetting = (
     playSound,
     tts,
     getSoundboardList,
+    getSoundboardStatus,
     stopSounds,
     deleteSound,
     getTtsVoices,
     uploadSoundboardFile,
+    getPresets,
+    savePreset,
+    applyPreset,
+    deletePreset,
     mergeModel,
     updateModelDefault,
     updateModelInfo,

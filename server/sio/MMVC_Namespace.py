@@ -56,6 +56,7 @@ class MMVC_Namespace(socketio.AsyncNamespace):
         if not isinstance(msg, (list, tuple)) or len(msg) != 2:
             await self.emit("vc_error", {"msg": "expected [timestamp, audio]"}, to=sid)
             return
+        timestamp = None
         try:
             timestamp = int(msg[0])
             data = msg[1]
@@ -82,7 +83,10 @@ class MMVC_Namespace(socketio.AsyncNamespace):
         except Exception as exc:
             logger.exception("Realtime conversion failed for %s", sid)
             if sid in self.connected:
-                await self.emit("vc_error", {"msg": str(exc)}, to=sid)
+                payload = {"msg": str(exc)}
+                if timestamp is not None:
+                    payload["timestamp"] = timestamp
+                await self.emit("vc_error", payload, to=sid)
 
     async def on_disconnect(self, sid):
         self.connected.discard(sid)

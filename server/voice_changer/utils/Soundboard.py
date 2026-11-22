@@ -7,7 +7,7 @@ from typing import Optional
 import librosa
 import numpy as np
 
-from voice_changer.utils.SettingValidation import strict_int
+from voice_changer.utils.SettingValidation import finite_float, strict_int
 
 
 class Soundboard:
@@ -17,14 +17,40 @@ class Soundboard:
     MAX_QUEUE_SECONDS = 60
     MAX_CHUNK_SIZE = 192000
 
-    def __init__(self, sampling_rate: int = 48000):
+    def __init__(self, sampling_rate: int = 48000, volume: float = 1.0):
         self.sampling_rate = strict_int(sampling_rate, "sampling_rate")
         if not 1 <= self.sampling_rate <= 384000:
             raise ValueError("sampling_rate must be between 1 and 384000 Hz")
+        self.volume = 1.0
         self.queue: list[np.ndarray] = []
         self.current_pos = 0
         self.current_audio: Optional[np.ndarray] = None
         self.lock = threading.Lock()
+        self.set_volume(volume)
+
+    def set_volume(self, volume: float) -> float:
+        value = finite_float(volume, "soundboardVolume")
+        if not 0.0 <= value <= 2.0:
+            raise ValueError("soundboardVolume must be between 0.0 and 2.0")
+        with self.lock:
+            self.volume = value
+            return self.volume
+
+    def status(self) -> dict[str, object]:
+        with self.lock:
+            queued_samples = sum(len(item) for item in self.queue)
+            queued_count = len(self.queue)
+            if self.current_audio is not None and self.current_pos < len(self.current_audio):
+                queued_samples += len(self.current_audio) - self.current_pos
+                queued_count += 1
+            active = queued_count > 0
+            remaining_seconds = round(queued_samples / self.sampling_rate, 3) if self.sampling_rate > 0 else 0.0
+            return {
+                "active": active,
+                "queuedCount": queued_count,
+                "remainingSeconds": remaining_seconds,
+                "volume": self.volume,
+            }
 
     def add_sound(self, file_path: str) -> bool:
         if not os.path.isfile(file_path):
@@ -98,6 +124,7 @@ class Soundboard:
         output = np.zeros(chunk_size, dtype=np.float32)
         written = 0
         with self.lock:
+            volume = self.volume
             while written < chunk_size:
                 if self.current_audio is None:
                     if not self.queue:
@@ -111,4 +138,6 @@ class Soundboard:
                 if self.current_pos >= len(self.current_audio):
                     self.current_audio = None
                     self.current_pos = 0
+        if volume != 1.0:
+            output *= volume
         return output

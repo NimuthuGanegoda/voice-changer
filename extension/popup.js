@@ -13,6 +13,7 @@ async function saveConnection() {
 const enabledEl = document.getElementById("enabled");
 const serverUrlEl = document.getElementById("serverUrl");
 const accessTokenEl = document.getElementById("accessToken");
+const reconnectEl = document.getElementById("reconnect");
 const statusEl = document.getElementById("status");
 
 let tabId = null;
@@ -24,9 +25,12 @@ async function refreshStatus() {
       statusEl.textContent = "Not active on this page (reload the tab after installing).";
       return;
     }
+    const rttText = typeof res.lastRttMs === "number" ? `${res.lastRttMs} ms` : "—";
+    const drops = typeof res.overrunCount === "number" ? res.overrunCount : 0;
     statusEl.textContent =
       `Enabled: ${res.enabled ? "yes" : "no"}\n` +
-      `Server: ${res.serverUrl} (${res.connected ? "connected" : "not connected"})`;
+      `Server: ${res.serverUrl} (${res.connected ? "connected" : "not connected"})\n` +
+      `Latency: ${rttText} | Dropped: ${drops}`;
   });
 }
 
@@ -49,5 +53,11 @@ async function init() {
 enabledEl.addEventListener("change", () => saveConnection().catch(e => { statusEl.textContent = String(e); }));
 serverUrlEl.addEventListener("change", () => saveConnection().catch(e => { statusEl.textContent = String(e); }));
 accessTokenEl.addEventListener("change", () => saveConnection().catch(e => { statusEl.textContent = String(e); }));
+if (reconnectEl) {
+  reconnectEl.addEventListener("click", () => {
+    if (tabId === null) return;
+    chrome.tabs.sendMessage(tabId, { type: "vc-reconnect" }, () => { refreshStatus(); });
+  });
+}
 
 init();

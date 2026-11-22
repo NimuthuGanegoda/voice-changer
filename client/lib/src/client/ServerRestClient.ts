@@ -1,4 +1,4 @@
-import { DeviceSetupStatus, MergeModelRequest, OnnxExporterInfo, ServerInfo, ServerSettingKey } from "../const";
+import { DeviceSetupStatus, MergeModelRequest, OnnxExporterInfo, ServerInfo, ServerSettingKey, SoundboardStatus, VoicePresetMap, VoicePresetSettings } from "../const";
 
 export type UploadResult = { chunkNum: number; uploadId: string; storedName: string };
 type StatusMessage = { status: string; message?: string; msg?: string };
@@ -51,12 +51,25 @@ export class ServerRestClient {
     getDeviceSetupStatus = () => this.request<DeviceSetupStatus>("/device_setup/status");
     getPerformance = () => this.request<number[]>("/performance");
     playSound = (filename: string) => this.request<StatusMessage>("/play_sound", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename }) });
-    tts = (text: string, voice = "") => this.request<StatusMessage>("/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice }) });
+    tts = (text: string, voice = "", rate?: number) => {
+        const payload: { text: string; voice: string; rate?: number } = { text, voice };
+        if (rate !== undefined) payload.rate = rate;
+        return this.request<StatusMessage>("/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    };
     getSoundboardList = () => this.request<StatusMessage & { files?: string[] }>("/soundboard/list");
+    getSoundboardStatus = () => this.request<SoundboardStatus>("/soundboard/status");
     stopSounds = () => this.request<StatusMessage>("/soundboard/stop", { method: "POST" });
     deleteSound = (filename: string) => this.request<StatusMessage>("/soundboard/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename }) });
     getTtsVoices = () => this.request<StatusMessage & { voices?: { id: string; name: string; languages: string[] }[] }>("/tts/voices");
     uploadSoundboardFile = (file: File) => this.request<StatusMessage>("/soundboard/upload", { method: "POST", body: this.form({ file, filename: file.name }) }, 120000);
+    getPresets = () => this.request<StatusMessage & { presets?: VoicePresetMap }>("/presets");
+    savePreset = (name: string, settings?: VoicePresetSettings) => this.request<StatusMessage & { name?: string; settings?: VoicePresetSettings }>("/presets/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings ? { name, settings } : { name }),
+    });
+    applyPreset = (name: string) => this.request<ServerInfo>("/presets/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    deletePreset = (name: string) => this.request<StatusMessage>("/presets/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
 
     updateSettings = (key: ServerSettingKey, val: string) => this.request<ServerInfo>("/update_settings", { method: "POST", body: this.form({ key, val }) });
 

@@ -69,3 +69,24 @@ def test_empty_and_invalid_audio_are_rejected(soundboard_module, tmp_path, monke
         board.get_chunk(0)
     with pytest.raises(ValueError):
         board.set_sampling_rate(0)
+
+
+def test_volume_scaling_bounds_and_status_reporting(soundboard_module, tmp_path):
+    board = soundboard_module.Soundboard(sampling_rate=1000, volume=0.5)
+    assert board.status() == {"active": False, "queuedCount": 0, "remainingSeconds": 0.0, "volume": 0.5}
+
+    assert board.add_sound(make_clip(tmp_path, 4))
+    status = board.status()
+    assert status["active"] is True
+    assert status["queuedCount"] == 1
+    assert status["remainingSeconds"] == 0.004
+    assert status["volume"] == 0.5
+
+    assert board.get_chunk(2).tolist() == [0.5, 0.5]
+    assert board.set_volume(0.0) == 0.0
+    assert board.get_chunk(2).tolist() == [0.0, 0.0]
+    assert board.status()["active"] is False
+
+    for bad in (-0.1, 2.5, float("nan"), float("inf"), True):
+        with pytest.raises(ValueError):
+            board.set_volume(bad)

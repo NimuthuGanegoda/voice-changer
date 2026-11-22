@@ -5,6 +5,7 @@ import { DeviceArea } from "./102-3_DeviceArea"
 import { RecorderArea } from "./102-4_RecorderArea"
 import { MoreActionArea } from "./102-5_MoreActionArea"
 import { SoundboardArea } from "./102-6_SoundboardArea"
+import { PresetArea } from "./102-7_PresetArea"
 
 export type ConfigAreaProps = {
     detectors: string[]
@@ -26,6 +27,9 @@ export const ConfigArea = (props: ConfigAreaProps) => {
                 </div>
                 <div className="config-area">
                     <SoundboardArea></SoundboardArea>
+                    <PresetArea></PresetArea>
+                </div>
+                <div className="config-area">
                     <MoreActionArea></MoreActionArea>
                 </div>
             </>
