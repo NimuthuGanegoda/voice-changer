@@ -9,15 +9,22 @@ if errorlevel 1 (
     goto :fail
 )
 
-if not exist "venv\Scripts\activate.bat" (
-    echo No venv\ found. Set it up first:
+set "VENV_ACTIVATE="
+if exist "venv\Scripts\activate.bat" set "VENV_ACTIVATE=venv\Scripts\activate.bat"
+if not defined VENV_ACTIVATE if exist ".venv\Scripts\activate.bat" set "VENV_ACTIVATE=.venv\Scripts\activate.bat"
+
+if not defined VENV_ACTIVATE (
+    echo No virtualenv (venv\ or .venv\) found. Set it up first:
     echo   python -m venv venv
     echo   venv\Scripts\activate
     echo   pip install -r server\requirements.txt
     goto :fail
 )
 
-call venv\Scripts\activate.bat
+python -c "import sys; assert sys.version_info >= (3, 10), 'Python 3.10+ is required'"
+if errorlevel 1 goto :fail
+
+call "%VENV_ACTIVATE%"
 
 where nvidia-smi >nul 2>nul
 if errorlevel 1 (

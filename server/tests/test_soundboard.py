@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -9,7 +10,7 @@ import pytest
 @pytest.fixture
 def soundboard_module(monkeypatch):
     fake = ModuleType("librosa")
-    fake.load = lambda path, **kwargs: (np.ones(int(path.rsplit("/", 1)[-1]), dtype=np.float32), 0)
+    fake.load = lambda path, **kwargs: (np.ones(int(os.path.basename(path)), dtype=np.float32), 0)
     fake.resample = lambda audio, orig_sr, target_sr: np.repeat(audio, target_sr // orig_sr)
     monkeypatch.setitem(sys.modules, "librosa", fake)
     import voice_changer.utils.Soundboard as module
