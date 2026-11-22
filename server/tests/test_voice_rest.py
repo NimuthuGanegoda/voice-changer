@@ -18,10 +18,16 @@ def api(tmp_path, monkeypatch):
     import restapi.MMVC_Rest_VoiceChanger as module
     monkeypatch.setattr(module, "SOUNDBOARD_DIR", str(tmp_path))
     calls = []
+    presets_store = {}
     manager = SimpleNamespace(
         play_sound=lambda name: calls.append(("play", name)) or True,
         stop_sounds=lambda: calls.append(("stop",)) or True,
         delete_sound=lambda name: calls.append(("delete", name)) or True,
+        get_soundboard_status=lambda: {"active": False, "queuedCount": 0, "remainingSeconds": 0.0, "volume": 1.0, "bypass": False},
+        list_presets=lambda: dict(presets_store),
+        save_preset=lambda name, settings=None: presets_store.__setitem__(name.strip(), settings or {"tran": 0}) or presets_store[name.strip()],
+        apply_preset=lambda name: {"status": "OK", "applied": name},
+        delete_preset=lambda name: presets_store.pop(name) or True,
         soundboard=SimpleNamespace(add_sound=lambda path: calls.append(("add", path)) or True),
         changeVoice=lambda audio: (audio, []),
     )
@@ -72,13 +78,15 @@ def test_soundboard_upload_limit_and_extension(api, monkeypatch):
 def fake_tts(monkeypatch):
     module = ModuleType("pyttsx3")
     lock = threading.Lock()
-    stats = SimpleNamespace(active=0, max_active=0, stopped=0)
+    stats = SimpleNamespace(active=0, max_active=0, stopped=0, rates=[])
 
     class Engine:
         def getProperty(self, name):
             if name == "voices":
                 return [SimpleNamespace(id="voice-1", name="Test Voice", languages=[b"en"])]
         def setProperty(self, name, value):
+            if name == "rate":
+                stats.rates.append(value)
             self.voice = value
         def save_to_file(self, text, path):
             with open(path, "wb") as out:
@@ -120,3 +128,22 @@ def test_tts_requests_are_serialized_and_temp_files_removed(api, fake_tts):
     assert fake_tts.max_active == 1
     assert fake_tts.stopped >= 2
     assert len([call for call in calls if call[0] == "add"]) == 2
+
+
+def test_tts_rate_and_soundboard_status_and_presets_routes(api, fake_tts):
+    client, _, _, _ = api
+    assert client.post("/tts", json={"text": "fast", "rate": 250}).status_code == 200
+    assert 250 in fake_tts.rates
+    assert client.post("/tts", json={"text": "too slow", "rate": 10}).status_code == 422
+    assert client.post("/tts", json={"text": "too fast", "rate": 999}).status_code == 422
+
+    status = client.get("/soundboard/status")
+    assert status.status_code == 200
+    assert status.json()["volume"] == 1.0
+    assert status.json()["bypass"] is False
+
+    assert client.post("/presets/save", json={"name": "Gaming", "settings": {"tran": 3}}).status_code == 200
+    assert client.get("/presets").json()["presets"] == {"Gaming": {"tran": 3}}
+    assert client.post("/presets/apply", json={"name": "Gaming"}).json()["applied"] == "Gaming"
+    assert client.post("/presets/delete", json={"name": "Gaming"}).status_code == 200
+    assert client.get("/presets").json()["presets"] == {}

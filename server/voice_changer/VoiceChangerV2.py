@@ -38,6 +38,7 @@ from Exceptions import (
 )
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 from voice_changer.utils.AudioSettings import updated_crossfade
+from voice_changer.utils.SettingValidation import strict_int
 
 STREAM_INPUT_FILE = os.path.join(TMP_DIR, "in.wav")
 STREAM_OUTPUT_FILE = os.path.join(TMP_DIR, "out.wav")
@@ -128,23 +129,24 @@ class VoiceChangerV2(VoiceChangerIF):
             logger.warn("[Voice Changer] Voice Changer is not selected.")
             return self.get_info()
 
-        if key == "serverAudioStated" and val == 0:
+        if key == "serverAudioStated" and strict_int(val, key) == 0:
             self.settings.inputSampleRate = 48000
             self.settings.outputSampleRate = 48000
             self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
 
         if key in ("crossFadeOffsetRate", "crossFadeEndRate", "crossFadeOverlapSize"):
             updated_crossfade(self.settings, key, val)
-        if key == "recordIO" and int(val) not in (0, 1, 2):
+        if key == "recordIO" and strict_int(val, key) not in (0, 1, 2):
             raise ValueError("recordIO must be 0, 1 or 2")
-        if key in ("inputSampleRate", "outputSampleRate") and int(val) not in (24000, 44100, 48000):
+        if key in ("inputSampleRate", "outputSampleRate") and strict_int(val, key) not in (24000, 44100, 48000):
             raise ValueError("voice-changer sample rate must be 24000, 44100 or 48000")
 
         if key in self.settings.intData:
-            setattr(self.settings, key, int(val))
-            if key == "crossFadeOffsetRate" or key == "crossFadeEndRate":
+            int_val = strict_int(val, key)
+            setattr(self.settings, key, int_val)
+            if key == "crossFadeOverlapSize":
                 self.crossfadeSize = 0
-            if key == "recordIO" and val == 1:
+            if key == "recordIO" and int_val == 1:
                 if hasattr(self, "ioRecorder"):
                     self.ioRecorder.close()
                 self.ioRecorder = IORecorder(
@@ -155,17 +157,15 @@ class VoiceChangerV2(VoiceChangerIF):
                     # 16000,
                 )
                 print(f"-------------------------- - - - {self.settings.inputSampleRate}, {self.settings.outputSampleRate}")
-            if key == "recordIO" and val == 0:
-                if hasattr(self, "ioRecorder"):
-                    self.ioRecorder.close()
-                pass
-            if key == "recordIO" and val == 2:
+            if key == "recordIO" and int_val in (0, 2):
                 if hasattr(self, "ioRecorder"):
                     self.ioRecorder.close()
             if key == "inputSampleRate" or key == "outputSampleRate":
                 self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
         elif key in self.settings.floatData:
             setattr(self.settings, key, float(val))
+            if key in ("crossFadeOffsetRate", "crossFadeEndRate"):
+                self.crossfadeSize = 0
         elif key in self.settings.strData:
             setattr(self.settings, key, str(val))
         else:
@@ -182,8 +182,8 @@ class VoiceChangerV2(VoiceChangerIF):
             self.currentCrossFadeEndRate = self.settings.crossFadeEndRate
             self.currentCrossFadeOverlapSize = self.settings.crossFadeOverlapSize
 
-            cf_offset = int(crossfadeSize * self.settings.crossFadeOffsetRate)
-            cf_end = int(crossfadeSize * self.settings.crossFadeEndRate)
+            cf_offset = min(int(crossfadeSize * self.settings.crossFadeOffsetRate), max(0, crossfadeSize - 1))
+            cf_end = max(cf_offset + 1, min(crossfadeSize, int(crossfadeSize * self.settings.crossFadeEndRate)))
             cf_range = cf_end - cf_offset
             percent = np.arange(cf_range) / cf_range
 
@@ -279,7 +279,7 @@ class VoiceChangerV2(VoiceChangerIF):
                         result = output_wav
                     else:
                         logger.info("[Voice Changer] warming up... generating sola buffer.")
-                        result = np.zeros(4096).astype(np.int16)
+                        result = np.zeros(block_frame, dtype=np.int16)
 
                     t.record("sora")
 
@@ -298,7 +298,7 @@ class VoiceChangerV2(VoiceChangerIF):
 
             # 後処理
             with Timer2("post-process", False) as t:
-                result = result.astype(np.int16)
+                result = np.clip(result, -32768, 32767).astype(np.int16)
 
                 print_convert_processing(f" Output data size of {result.shape[0]}/{processing_sampling_rate}hz {result .shape[0]}/{self.settings.outputSampleRate}hz")
 
@@ -313,7 +313,7 @@ class VoiceChangerV2(VoiceChangerIF):
                 else:
                     outputData = result
 
-                if self.settings.recordIO == 1:
+                if self.settings.recordIO == 1 and hasattr(self, "ioRecorder"):
                     self.ioRecorder.writeInput(receivedData)
                     self.ioRecorder.writeOutput(outputData.tobytes())
 

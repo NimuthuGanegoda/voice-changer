@@ -320,6 +320,10 @@ class ServerDevice:
                 # sd._terminate()
                 # sd._initialize()
                 time.sleep(2)
+            elif sd is None:
+                logger.warning("[ServerDevice] sounddevice/PortAudio is unavailable; disabling server audio start")
+                self.settings.serverAudioStated = 0
+                time.sleep(2)
             else:
                 sd._terminate()
                 sd._initialize()

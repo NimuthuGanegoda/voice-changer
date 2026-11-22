@@ -141,6 +141,8 @@ export const ServerSettingKey = {
 
     inputSampleRate: "inputSampleRate",
     enableDirectML: "enableDirectML",
+    soundboardVolume: "soundboardVolume",
+    soundboardBypass: "soundboardBypass",
 } as const;
 export type ServerSettingKey = (typeof ServerSettingKey)[keyof typeof ServerSettingKey];
 
@@ -203,6 +205,8 @@ export type VoiceChangerServerSetting = {
 
     inputSampleRate: InputSampleRate;
     enableDirectML: number;
+    soundboardVolume: number;
+    soundboardBypass: boolean;
 };
 
 type ModelSlot = {
@@ -338,6 +342,18 @@ export type DeviceSetupStatus = {
     message?: string;
 };
 
+export type SoundboardStatus = {
+    status: string;
+    active: boolean;
+    queuedCount: number;
+    remainingSeconds: number;
+    volume: number;
+    bypass: boolean;
+};
+
+export type VoicePresetSettings = Record<string, string | number | boolean>;
+export type VoicePresetMap = Record<string, VoicePresetSettings>;
+
 export type ServerInfo = VoiceChangerServerSetting & {
     // コンフィグ対象外 (getInfoで取得のみ可能な情報)
     status: string;
@@ -447,6 +463,8 @@ export const DefaultServerSetting: ServerInfo = {
     skipDiffusion: 1,
 
     enableDirectML: 0,
+    soundboardVolume: 1.0,
+    soundboardBypass: false,
     //
     status: "ok",
     modelSlots: [],

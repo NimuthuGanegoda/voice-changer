@@ -9,9 +9,12 @@ export const SoundboardArea = (_props: SoundboardAreaProps) => {
     const [files, setFiles] = useState<string[]>([]);
     const [voices, setVoices] = useState<TtsVoice[]>([]);
     const [voice, setVoice] = useState<string>("");
+    const [ttsRate, setTtsRate] = useState<string>("");
     const [ttsText, setTtsText] = useState<string>("");
     const [busy, setBusy] = useState<boolean>(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const soundboardVolume = serverSetting.serverSetting.soundboardVolume ?? 1.0;
+    const soundboardBypass = Boolean(serverSetting.serverSetting.soundboardBypass);
 
     const reloadList = async () => {
         try {
@@ -62,9 +65,14 @@ export const SoundboardArea = (_props: SoundboardAreaProps) => {
         };
         const onTtsClicked = () => {
             if (!ttsText.trim()) return;
-            run(() => serverSetting.tts(ttsText, voice));
+            const parsedRate = ttsRate ? Number(ttsRate) : undefined;
+            run(() => serverSetting.tts(ttsText, voice, parsedRate));
         };
         const onStopClicked = () => run(() => serverSetting.stopSounds());
+        const onVolumeChanged = (val: number) =>
+            run(() => serverSetting.updateServerSettings({ ...serverSetting.serverSetting, soundboardVolume: val }));
+        const onBypassToggled = () =>
+            run(() => serverSetting.updateServerSettings({ ...serverSetting.serverSetting, soundboardBypass: !soundboardBypass }));
 
         return (
             <div className="config-sub-area-control left-padding-1">
@@ -79,8 +87,30 @@ export const SoundboardArea = (_props: SoundboardAreaProps) => {
                         ))}
                         <div className="config-sub-area-button" onClick={() => !busy && onUploadClicked()}>+ add</div>
                         <div className="config-sub-area-button" onClick={() => !busy && onStopClicked()}>stop</div>
+                        <div
+                            className={soundboardBypass ? "config-sub-area-button-active" : "config-sub-area-button"}
+                            title="Direct SFX mixes clips after voice conversion; Convert Voice feeds clips through the AI voice"
+                            onClick={() => !busy && onBypassToggled()}
+                        >
+                            {soundboardBypass ? "direct sfx" : "convert voice"}
+                        </div>
                         <input ref={fileInputRef} type="file" accept=".wav,.mp3,.ogg,.flac,.m4a,audio/*" hidden onChange={onFileSelected} />
                     </div>
+                </div>
+                <div className="config-sub-area-control-field config-sub-area-control-field-long" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>vol</span>
+                        <input
+                            type="range"
+                            min="0.0"
+                            max="2.0"
+                            step="0.05"
+                            aria-label="Soundboard volume"
+                            value={soundboardVolume}
+                            onChange={(e) => onVolumeChanged(Number(e.target.value))}
+                        />
+                        <span>{soundboardVolume.toFixed(2)}</span>
+                    </label>
                 </div>
                 <div className="config-sub-area-control-field config-sub-area-control-field-long">
                     <input
@@ -98,11 +128,17 @@ export const SoundboardArea = (_props: SoundboardAreaProps) => {
                         <option value="">default voice</option>
                         {voices.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                     </select>
+                    <select className="body-select" value={ttsRate} onChange={e => setTtsRate(e.target.value)} aria-label="TTS speed">
+                        <option value="">1.0x</option>
+                        <option value="130">0.75x</option>
+                        <option value="225">1.25x</option>
+                        <option value="275">1.5x</option>
+                    </select>
                     <div className="config-sub-area-button" onClick={() => !busy && onTtsClicked()}>{busy ? "..." : "speak"}</div>
                 </div>
             </div>
         );
-    }, [files, voices, voice, ttsText, busy, serverSetting]);
+    }, [files, voices, voice, ttsRate, ttsText, busy, serverSetting, soundboardVolume, soundboardBypass]);
 
     if (webEdition) return <></>;
     return <div className="config-sub-area">{soundboardRow}</div>;

@@ -15,10 +15,11 @@ from const import STORED_SETTING_FILE, UPLOAD_DIR, SOUNDBOARD_DIR, StaticSlot, M
 from voice_changer.VoiceChangerV2 import VoiceChangerV2
 from voice_changer.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
 from voice_changer.utils.ModelImport import install_model
+from voice_changer.utils.PresetManager import PRESET_ALLOWED_KEYS, PresetManager
 from voice_changer.utils.Soundboard import Soundboard
 from voice_changer.utils.ModelMerger import ModelMergerRequest
 from voice_changer.utils.ModelPaths import MAX_MODEL_SLOTS
-from voice_changer.utils.SettingValidation import strict_int
+from voice_changer.utils.SettingValidation import finite_float, strict_int
 from voice_changer.utils.VoiceChangerModel import AudioInOut
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
 from dataclasses import dataclass, asdict, field
@@ -42,11 +43,18 @@ class GPUInfo:
 class VoiceChangerManagerSettings:
     modelSlotIndex: int | StaticSlot = -1
     passThrough: bool = False  # 0: off, 1: on
+    soundboardVolume: float = 1.0
+    soundboardBypass: bool = False
     # ↓mutableな物だけ列挙
-    boolData: list[str] = field(default_factory=lambda: ["passThrough"])
+    boolData: list[str] = field(default_factory=lambda: ["passThrough", "soundboardBypass"])
     intData: list[str] = field(
         default_factory=lambda: [
             "modelSlotIndex",
+        ]
+    )
+    floatData: list[str] = field(
+        default_factory=lambda: [
+            "soundboardVolume",
         ]
     )
 
@@ -87,10 +95,12 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         # mutable pipelines. Control changes wait for the current audio block.
         self.processingLock = threading.RLock()
         self.voiceChanger: VoiceChanger = None
+        self.voiceChangerModel = None
         self.settings: VoiceChangerManagerSettings = VoiceChangerManagerSettings()
 
         self.modelSlotManager = ModelSlotManager.get_instance(self.params.model_dir)
         self.soundboard = Soundboard()
+        self.presetManager = PresetManager()
         os.makedirs(SOUNDBOARD_DIR, exist_ok=True)
         # スタティックな情報を収集
         self.gpus: list[GPUInfo] = self._get_gpuInfos()
@@ -110,6 +120,12 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         self.stored_setting.setdefault("gpu", 0)
 
         self.serverDevice = ServerDevice(self)
+        for sb_key in ("soundboardVolume", "soundboardBypass"):
+            if sb_key in self.stored_setting:
+                try:
+                    self.update_settings(sb_key, self.stored_setting[sb_key])
+                except Exception:
+                    logger.warning("Could not restore saved %s; using default", sb_key)
         if "modelSlotIndex" in self.stored_setting:
             try:
                 self.update_settings("modelSlotIndex", self.stored_setting["modelSlotIndex"])
@@ -123,7 +139,7 @@ class VoiceChangerManager(ServerDeviceCallbacks):
     def store_setting(self, key: str, val: str | int | float):
         saveItemForServerDevice = ["enableServerAudio", "serverAudioSampleRate", "serverInputDeviceId", "serverOutputDeviceId", "serverMonitorDeviceId", "serverReadChunkSize", "serverInputAudioGain", "serverOutputAudioGain"]
         saveItemForVoiceChanger = ["crossFadeOffsetRate", "crossFadeEndRate", "crossFadeOverlapSize"]
-        saveItemForVoiceChangerManager = ["modelSlotIndex"]
+        saveItemForVoiceChangerManager = ["modelSlotIndex", "soundboardVolume", "soundboardBypass"]
         saveItemForRVC = ["extraConvertSize", "gpu", "silentThreshold"]
         saveItemForAllVoiceChanger = ["f0Detector"]  # 設定されたf0DetectorがVCに存在しない値の場合はデフォルトに落ちるように実装すること
 
@@ -369,6 +385,14 @@ class VoiceChangerManager(ServerDeviceCallbacks):
                 newVal = strict_int(val, key)
 
             setattr(self.settings, key, newVal)
+        elif key in self.settings.floatData:
+            newVal = finite_float(val, key)
+            if key == "soundboardVolume":
+                if not 0.0 <= newVal <= 2.0:
+                    raise ValueError("soundboardVolume must be between 0.0 and 2.0")
+                if getattr(self, "soundboard", None) is not None:
+                    self.soundboard.set_volume(newVal)
+            setattr(self.settings, key, newVal)
 
         self._apply_runtime_setting_locked(key, val)
         self.store_setting(key, val)
@@ -383,18 +407,31 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         with self.processingLock:
             return self._changeVoice_locked(receivedData)
 
+    def _mix_soundboard(self, pcm: AudioInOut, sample_rate: int) -> AudioInOut:
+        if pcm.size == 0:
+            return pcm
+        self.soundboard.set_sampling_rate(sample_rate)
+        sb_chunk = self.soundboard.get_chunk(pcm.shape[0])
+        pcm_float = pcm.astype(np.float32) / 32768.0
+        mixed = np.clip(pcm_float + sb_chunk, -1.0, 1.0)
+        return (mixed * 32767.0).astype(np.int16)
+
     def _changeVoice_locked(self, receivedData: AudioInOut):
         if receivedData.size == 0:
             raise ValueError("audio block must not be empty")
-        # Mix soundboard audio (skip the float round-trip entirely when nothing is queued)
-        if self.soundboard.is_active():
-            if self.voiceChanger is not None:
-                inputSampleRate = getattr(self.voiceChanger.settings, "inputSampleRate", 48000)
-                self.soundboard.set_sampling_rate(inputSampleRate)
-            sb_chunk = self.soundboard.get_chunk(receivedData.shape[0])
-            receivedDataFloat = receivedData.astype(np.float32) / 32768.0
-            mixedDataFloat = receivedDataFloat + sb_chunk
-            mixedData = (np.clip(mixedDataFloat, -1.0, 1.0) * 32767.0).astype(np.int16)
+        soundboard_active = self.soundboard.is_active()
+        bypass_soundboard = bool(getattr(self.settings, "soundboardBypass", False))
+
+        # Direct/bypass SFX mode: convert voice cleanly first, then mix soundboard audio post-conversion.
+        if soundboard_active and bypass_soundboard and not self.settings.passThrough and self.voiceChanger is not None:
+            converted, perf = self.voiceChanger.on_request(receivedData)
+            output_rate = getattr(self.voiceChanger.settings, "outputSampleRate", 48000)
+            return self._mix_soundboard(converted, output_rate), perf
+
+        # Pre-conversion mode (default): mix soundboard/TTS into input so it gets converted into the AI voice.
+        if soundboard_active:
+            input_rate = getattr(self.voiceChanger.settings, "inputSampleRate", 48000) if self.voiceChanger is not None else 48000
+            mixedData = self._mix_soundboard(receivedData, input_rate)
         else:
             mixedData = receivedData
 
@@ -406,6 +443,63 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         else:
             logger.info("Voice Change is not loaded. Did you load a correct model?")
             return mixedData, []
+
+    def get_soundboard_status(self):
+        return {
+            **self.soundboard.status(),
+            "bypass": bool(getattr(self.settings, "soundboardBypass", False)),
+        }
+
+    def list_presets(self):
+        return self.presetManager.list_presets()
+
+    def save_preset(self, name: str, settings: dict[str, Any] | None = None):
+        with self.processingLock:
+            if settings is None:
+                info = self.get_info()
+                snapshot: dict[str, Any] = {}
+                for key in PRESET_ALLOWED_KEYS:
+                    if key in info and info[key] is not None:
+                        val = info[key]
+                        if key == "modelSlotIndex" and val == -1:
+                            continue
+                        if isinstance(val, (bool, int, float, str)):
+                            snapshot[key] = val
+                settings = snapshot
+            return self.presetManager.save_preset(name, settings)
+
+    def apply_preset(self, name: str):
+        with self.processingLock:
+            preset = self.presetManager.get_preset(name)
+            if "modelSlotIndex" in preset and preset["modelSlotIndex"] != self.settings.modelSlotIndex:
+                self._update_settings_locked("modelSlotIndex", preset["modelSlotIndex"])
+            crossfade_keys = ("crossFadeOffsetRate", "crossFadeEndRate", "crossFadeOverlapSize")
+            if any(k in preset for k in crossfade_keys):
+                from voice_changer.utils.AudioSettings import apply_crossfade, validate_crossfade
+                if self.voiceChanger is not None:
+                    current = self.voiceChanger.settings
+                    offset = finite_float(preset.get("crossFadeOffsetRate", current.crossFadeOffsetRate), "crossFadeOffsetRate")
+                    end = finite_float(preset.get("crossFadeEndRate", current.crossFadeEndRate), "crossFadeEndRate")
+                    overlap = strict_int(preset.get("crossFadeOverlapSize", current.crossFadeOverlapSize), "crossFadeOverlapSize")
+                    apply_crossfade(current, offset, end, overlap)
+                    self.voiceChanger.crossfadeSize = 0
+                else:
+                    offset = finite_float(preset.get("crossFadeOffsetRate", self.stored_setting.get("crossFadeOffsetRate", 0.1)), "crossFadeOffsetRate")
+                    end = finite_float(preset.get("crossFadeEndRate", self.stored_setting.get("crossFadeEndRate", 0.9)), "crossFadeEndRate")
+                    overlap = strict_int(preset.get("crossFadeOverlapSize", self.stored_setting.get("crossFadeOverlapSize", 4096)), "crossFadeOverlapSize")
+                    validate_crossfade(offset, end, overlap)
+                for k in crossfade_keys:
+                    if k in preset:
+                        self.store_setting(k, preset[k])
+            for key, value in preset.items():
+                if key == "modelSlotIndex" or key in crossfade_keys:
+                    continue
+                self._update_settings_locked(key, value)
+            return self.get_info()
+
+    def delete_preset(self, name: str):
+        with self.processingLock:
+            return self.presetManager.delete_preset(name)
 
     def stop_sounds(self):
         self.soundboard.clear()
@@ -460,6 +554,8 @@ class VoiceChangerManager(ServerDeviceCallbacks):
 
     def update_model_default(self):
         with self.processingLock:
+            if getattr(self, "voiceChangerModel", None) is None:
+                raise ValueError("no model is loaded")
             current_settings = self.voiceChangerModel.get_model_current()
             for current_setting in current_settings:
                 current_setting["slot"] = self.settings.modelSlotIndex

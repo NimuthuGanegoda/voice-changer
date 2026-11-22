@@ -2,7 +2,7 @@ import { VoiceChangerWorkletNode, VoiceChangerWorkletListener, InternalCallback 
 // @ts-ignore
 import workerjs from "raw-loader!../worklet/dist/index.js";
 import { validateUrl } from "./util";
-import { DefaultClientSetting, MergeModelRequest, ServerSettingKey, VoiceChangerClientSetting, WorkletNodeSetting, WorkletSetting } from "./const";
+import { DefaultClientSetting, MergeModelRequest, ServerSettingKey, VoiceChangerClientSetting, VoicePresetSettings, WorkletNodeSetting, WorkletSetting } from "./const";
 import { ServerConfigurator } from "./client/ServerConfigurator";
 
 // オーディオデータの流れ
@@ -307,11 +307,14 @@ export class VoiceChangerClient {
     playSound = (filename: string) => {
         return this.configurator.playSound(filename);
     };
-    tts = (text: string, voice: string = "") => {
-        return this.configurator.tts(text, voice);
+    tts = (text: string, voice: string = "", rate?: number) => {
+        return this.configurator.tts(text, voice, rate);
     };
     getSoundboardList = () => {
         return this.configurator.getSoundboardList();
+    };
+    getSoundboardStatus = () => {
+        return this.configurator.getSoundboardStatus();
     };
     stopSounds = () => {
         return this.configurator.stopSounds();
@@ -324,6 +327,18 @@ export class VoiceChangerClient {
     };
     uploadSoundboardFile = (file: File) => {
         return this.configurator.uploadSoundboardFile(file);
+    };
+    getPresets = () => {
+        return this.configurator.getPresets();
+    };
+    savePreset = (name: string, settings?: VoicePresetSettings) => {
+        return this.configurator.savePreset(name, settings);
+    };
+    applyPreset = (name: string) => {
+        return this.configurator.applyPreset(name);
+    };
+    deletePreset = (name: string) => {
+        return this.configurator.deletePreset(name);
     };
 
     getSocketId = () => {

@@ -56,3 +56,23 @@ def test_socket_requires_token():
             assert "authorization" in str(exc)
         namespace.worker.shutdown()
     asyncio.run(scenario())
+
+
+def test_vc_error_includes_request_timestamp():
+    class FailingManager:
+        def setEmitTo(self, _callback): pass
+        def changeVoice(self, _audio): raise RuntimeError("boom")
+
+    async def scenario():
+        namespace = MMVC_Namespace("/test", FailingManager(), "test-token-123456")
+        emitted = []
+        async def emit(event, data, to=None): emitted.append((event, data, to))
+        namespace.emit = emit
+        await namespace.on_connect("a", {}, {"token": "test-token-123456"})
+        await namespace.on_request_message("a", [42, np.array([1, 2], dtype="<i2").tobytes()])
+        errors = [data for event, data, _to in emitted if event == "vc_error"]
+        assert len(errors) == 1
+        assert errors[0]["timestamp"] == 42
+        assert "boom" in errors[0]["msg"]
+        namespace.worker.shutdown()
+    asyncio.run(scenario())

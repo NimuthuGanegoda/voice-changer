@@ -73,3 +73,37 @@ test('disabling the tab disconnects and drops pending audio', () => {
   assert.equal(bridge.emitted.length, 1);
   assert.equal(bridge.socket.connected, false);
 });
+
+test('overrun and vc_error clear pending slots and status reports diagnostics', () => {
+  const bridge = loadBridge({ enabled: true });
+  for (let i = 1; i <= 4; i++) {
+    bridge.send({ __vcclient: true, token: bridge.token, type: 'VC_AUDIO_REQ', seq: i, buf: new ArrayBuffer(256) });
+  }
+  assert.equal(bridge.emitted.length, 4);
+
+  // Queue is now at 4; a 5th chunk is dropped until a slot frees up.
+  bridge.send({ __vcclient: true, token: bridge.token, type: 'VC_AUDIO_REQ', seq: 5, buf: new ArrayBuffer(256) });
+  assert.equal(bridge.emitted.length, 4);
+
+  // Server emits overrun for req 1 and vc_error for req 2 -> 2 slots freed!
+  bridge.socketHandlers.overrun({ timestamp: bridge.emitted[0][1][0] });
+  bridge.socketHandlers.vc_error({ timestamp: bridge.emitted[1][1][0], msg: 'transient error' });
+
+  bridge.send({ __vcclient: true, token: bridge.token, type: 'VC_AUDIO_REQ', seq: 6, buf: new ArrayBuffer(256) });
+  assert.equal(bridge.emitted.length, 5);
+
+  // Response computes RTT and clears its slot.
+  bridge.socketHandlers.response([bridge.emitted[4][1][0], new ArrayBuffer(256)]);
+
+  let status;
+  bridge.runtimeListener({ type: 'vc-status' }, {}, (res) => { status = res; });
+  assert.equal(status.overrunCount, 1);
+  assert.equal(typeof status.lastRttMs, 'number');
+  assert.equal(status.pendingCount, 2);
+
+  // Reconnect resets overrun count and socket.
+  bridge.runtimeListener({ type: 'vc-reconnect' }, {}, () => {});
+  bridge.runtimeListener({ type: 'vc-status' }, {}, (res) => { status = res; });
+  assert.equal(status.overrunCount, 0);
+  assert.equal(status.pendingCount, 0);
+});
