@@ -81,16 +81,26 @@ class VoiceChangaerLogger:
 
     def initialize(self, initialize: bool):
         if not self.logger.handlers:
-            if initialize:
-                # file_handler = logging.FileHandler("vcclient.log", encoding="utf-8", mode="w")
-                file_handler = DebugFileHandler("vcclient.log", encoding="utf-8", mode="w")
-            else:
-                # file_handler = logging.FileHandler("vcclient.log", encoding="utf-8")
-                file_handler = DebugFileHandler("vcclient.log", encoding="utf-8")
-            file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(process)d - %(message)s")
-            file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(logging.DEBUG)
-            self.logger.addHandler(file_handler)
+            try:
+                if initialize:
+                    file_handler = DebugFileHandler("vcclient.log", encoding="utf-8", mode="w")
+                else:
+                    file_handler = DebugFileHandler("vcclient.log", encoding="utf-8")
+                file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(process)d - %(message)s")
+                file_handler.setFormatter(file_formatter)
+                file_handler.setLevel(logging.DEBUG)
+                self.logger.addHandler(file_handler)
+            except (PermissionError, OSError):
+                import tempfile
+                fallback_log = os.path.join(tempfile.gettempdir(), "vcclient.log")
+                try:
+                    file_handler = DebugFileHandler(fallback_log, encoding="utf-8", mode="w" if initialize else "a")
+                    file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(process)d - %(message)s")
+                    file_handler.setFormatter(file_formatter)
+                    file_handler.setLevel(logging.DEBUG)
+                    self.logger.addHandler(file_handler)
+                except (PermissionError, OSError):
+                    pass
 
             stream_formatter = logging.Formatter("%(message)s")
             # stream_handler = logging.StreamHandler()
