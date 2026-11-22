@@ -18,6 +18,7 @@ WORKDIR /voice-changer/server
 COPY server/requirements*.txt ./
 RUN python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
 COPY server /voice-changer/server
+COPY docker_vcclient/setup.sh docker_vcclient/exec.sh /voice-changer/server/
 COPY --from=frontend /app/client/demo/dist /voice-changer/client/demo/dist
 RUN chmod +x setup.sh exec.sh && mkdir -p model_dir pretrain upload_dir tmp_dir
 EXPOSE 18888

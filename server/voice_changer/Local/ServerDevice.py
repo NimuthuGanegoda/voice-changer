@@ -9,7 +9,10 @@ from mods.log_control import VoiceChangaerLogger
 
 from voice_changer.Local.AudioDeviceList import checkSamplingRate, list_audio_device
 import time
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception as e:
+    sd = None
 from voice_changer.utils.Timer import Timer2
 from voice_changer.utils.SettingValidation import finite_float, strict_int
 import librosa

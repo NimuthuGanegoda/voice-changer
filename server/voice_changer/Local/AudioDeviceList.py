@@ -1,4 +1,7 @@
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except Exception as e:
+    sd = None
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -57,12 +60,13 @@ def checkSamplingRate(deviceId: int, desiredSamplingRate: int, type: ServerAudio
 
 
 def list_audio_device():
+    if sd is None:
+        return [], []
     try:
         audioDeviceList = sd.query_devices()
     except Exception as e:
-        logger.error("[Voice Changer] ex:query_devices")
-        logger.exception(e)
-        raise e
+        logger.warning(f"[Voice Changer] ex:query_devices: {e}")
+        return [], []
 
     inputAudioDeviceList = [d for d in audioDeviceList if d["max_input_channels"] > 0]
     outputAudioDeviceList = [d for d in audioDeviceList if d["max_output_channels"] > 0]
