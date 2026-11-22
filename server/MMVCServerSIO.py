@@ -25,6 +25,10 @@ from const import (
 )
 import subprocess
 import multiprocessing as mp
+import threading
+import time
+import urllib.request
+import webbrowser
 
 from mods.log_control import VoiceChangaerLogger
 
@@ -78,6 +82,7 @@ def setupArgParser():
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Listen address. Non-loopback addresses require --access-token or VCCLIENT_ACCESS_TOKEN.")
     parser.add_argument("--allowed-origins", action='append', default=[], help="List of URLs to allow connection from, i.e. https://example.com. Allows http(s)://127.0.0.1:{port} and http(s)://localhost:{port} by default.")
     parser.add_argument("--access-token", default=os.getenv("VCCLIENT_ACCESS_TOKEN"), help="API token (or VCCLIENT_ACCESS_TOKEN). Required for non-loopback hosts; use at least 16 random characters.")
+    parser.add_argument("--no-browser", action="store_true", help="Do not automatically open the web UI in the default browser when running as a packaged executable.")
 
     return parser
 
@@ -137,17 +142,49 @@ if args.access_token and (len(args.access_token) < 16 or any(c.isspace() or c in
     parser.error("--access-token must be at least 16 characters without whitespace, quotes, commas or semicolons")
 
 
+def _create_app():
+    voiceChangerManager = VoiceChangerManager.get_instance(voiceChangerParams)
+    app_fastapi = MMVC_Rest.get_instance(voiceChangerManager, voiceChangerParams, args.allowed_origins, PORT, args.access_token)
+    app_socketio = MMVC_SocketIOApp.get_instance(app_fastapi, voiceChangerManager, args.allowed_origins, PORT, args.access_token)
+    return voiceChangerManager, app_fastapi, app_socketio
+
+
+def _open_browser_when_ready(url: str, health_url: str, timeout_seconds: int = 60):
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(health_url, timeout=2) as resp:
+                if resp.status == 200:
+                    webbrowser.open(url)
+                    return
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+
 def localServer(logLevel: str = "critical", key_path: str | None = None, cert_path: str | None = None):
     try:
-        uvicorn.run(
-            f"{os.path.basename(__file__)[:-3]}:app_socketio",
-            host=HOST,
-            port=int(PORT),
-            reload=False if hasattr(sys, "_MEIPASS") else True,
-            ssl_keyfile=key_path,
-            ssl_certfile=cert_path,
-            log_level=logLevel,
-        )
+        if hasattr(sys, "_MEIPASS"):
+            _, _, app = _create_app()
+            uvicorn.run(
+                app,
+                host=HOST,
+                port=int(PORT),
+                reload=False,
+                ssl_keyfile=key_path,
+                ssl_certfile=cert_path,
+                log_level=logLevel,
+            )
+        else:
+            uvicorn.run(
+                f"{os.path.basename(__file__)[:-3]}:app_socketio",
+                host=HOST,
+                port=int(PORT),
+                reload=True,
+                ssl_keyfile=key_path,
+                ssl_certfile=cert_path,
+                log_level=logLevel,
+            )
     except Exception as e:
         logger.error(f"[Voice Changer] Web Server Launch Exception, {e}")
 
@@ -155,9 +192,7 @@ def localServer(logLevel: str = "critical", key_path: str | None = None, cert_pa
 if __name__ == "MMVCServerSIO":
     mp.freeze_support()
 
-    voiceChangerManager = VoiceChangerManager.get_instance(voiceChangerParams)
-    app_fastapi = MMVC_Rest.get_instance(voiceChangerManager, voiceChangerParams, args.allowed_origins, PORT, args.access_token)
-    app_socketio = MMVC_SocketIOApp.get_instance(app_fastapi, voiceChangerManager, args.allowed_origins, PORT, args.access_token)
+    voiceChangerManager, app_fastapi, app_socketio = _create_app()
 
 
 if __name__ == "__mp_main__":
@@ -267,19 +302,28 @@ if __name__ == "__main__":
             logger.error(f"[Voice Changer] Web Server(https) Launch Exception, {e}")
 
     else:
-        p = mp.Process(name="p", target=localServer, args=(args.logLevel,))
-        p.start()
-        try:
-            if sys.platform.startswith("win"):
-                process = subprocess.Popen([NATIVE_CLIENT_FILE_WIN, "--disable-gpu", "-u", f"http://localhost:{PORT}/"])
-                return_code = process.wait()
-                logger.info("client closed.")
-                p.terminate()
-            elif sys.platform.startswith("darwin"):
-                process = subprocess.Popen([NATIVE_CLIENT_FILE_MAC, "--disable-gpu", "-u", f"http://localhost:{PORT}/"])
-                return_code = process.wait()
-                logger.info("client closed.")
-                p.terminate()
+        native_client = None
+        if sys.platform.startswith("win") and os.path.exists(NATIVE_CLIENT_FILE_WIN):
+            native_client = NATIVE_CLIENT_FILE_WIN
+        elif sys.platform.startswith("darwin") and os.path.exists(NATIVE_CLIENT_FILE_MAC):
+            native_client = NATIVE_CLIENT_FILE_MAC
 
-        except Exception as e:
-            logger.error(f"[Voice Changer] Client Launch Exception, {e}")
+        if native_client is not None:
+            p = mp.Process(name="p", target=localServer, args=(args.logLevel,))
+            p.start()
+            try:
+                process = subprocess.Popen([native_client, "--disable-gpu", "-u", f"http://localhost:{PORT}/"])
+                process.wait()
+                logger.info("client closed.")
+            except Exception as e:
+                logger.error(f"[Voice Changer] Client Launch Exception, {e}")
+            finally:
+                p.terminate()
+        else:
+            if hasattr(sys, "_MEIPASS") and not args.no_browser:
+                threading.Thread(
+                    target=_open_browser_when_ready,
+                    args=(f"http://127.0.0.1:{PORT}/", f"http://127.0.0.1:{PORT}/api/hello"),
+                    daemon=True,
+                ).start()
+            localServer(args.logLevel)

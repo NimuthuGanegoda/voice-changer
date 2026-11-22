@@ -4,6 +4,7 @@ permissions:
   contents: write
 
 on:
+  pull_request:
   push:
     branches:
       - master
@@ -47,11 +48,76 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r server/requirements.txt
+          pip install -r server/requirements-dev.txt
           pip install pyinstaller
+
+      - name: Run Windows Server Regression Tests
+        run: |
+          python -m pytest server/tests -q
 
       - name: Build EXE
         run: |
           pyinstaller VoiceChanger.spec --noconfirm
+
+      - name: Smoke Test Windows EXE
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist\VoiceChanger.exe").Path
+          $work = Join-Path $env:RUNNER_TEMP "vc-exe-smoke"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          $stdoutLog = Join-Path $work "stdout.log"
+          $stderrLog = Join-Path $work "stderr.log"
+          $proc = Start-Process -FilePath $exe `
+            -ArgumentList "-p", "18888", "--host", "127.0.0.1", "--https", "false", "--no_download", "--no-browser" `
+            -WorkingDirectory $work -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              if ($proc.HasExited) {
+                throw "VoiceChanger.exe exited early with code $($proc.ExitCode)"
+              }
+              try {
+                $hello = Invoke-RestMethod -Uri "http://127.0.0.1:18888/api/hello" -TimeoutSec 2
+                if ($hello.result -eq "Index") { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Seconds 2
+            }
+            if (-not $ready) { throw "VoiceChanger.exe did not become ready in time" }
+
+            $health = Invoke-RestMethod -Uri "http://127.0.0.1:18888/api/health"
+            if ($health.status -ne "OK") { throw "Health check failed" }
+
+            $root = Invoke-WebRequest -Uri "http://127.0.0.1:18888/" -UseBasicParsing
+            if ($root.Content -notmatch "<html") { throw "Frontend HTML missing at /" }
+
+            $sb = Invoke-RestMethod -Uri "http://127.0.0.1:18888/soundboard/status"
+            if ($sb.status -ne "OK") { throw "Soundboard status failed" }
+
+            $dev = Invoke-RestMethod -Uri "http://127.0.0.1:18888/device_setup/status"
+            if ($dev.platform -ne "windows") { throw "Expected platform=windows, got $($dev.platform)" }
+
+            $saved = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18888/presets/save" `
+              -ContentType "application/json" -Body '{"name":"WinSmoke","settings":{"soundboardVolume":0.75,"soundboardBypass":true}}'
+            if ($saved.status -ne "OK") { throw "Preset save failed" }
+
+            $presets = Invoke-RestMethod -Uri "http://127.0.0.1:18888/presets"
+            if (-not $presets.presets.WinSmoke) { throw "Saved preset not listed" }
+
+            $applied = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18888/presets/apply" `
+              -ContentType "application/json" -Body '{"name":"WinSmoke"}'
+            if ($applied.soundboardVolume -ne 0.75 -or $applied.soundboardBypass -ne $true) { throw "Preset apply did not take effect" }
+
+            $deleted = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18888/presets/delete" `
+              -ContentType "application/json" -Body '{"name":"WinSmoke"}'
+            if ($deleted.status -ne "OK") { throw "Preset delete failed" }
+            Write-Host "Windows EXE smoke test PASSED!"
+          } catch {
+            if (Test-Path $stdoutLog) { Write-Host "=== STDOUT ==="; Get-Content $stdoutLog -Tail 100 }
+            if (Test-Path $stderrLog) { Write-Host "=== STDERR ==="; Get-Content $stderrLog -Tail 100 }
+            throw
+          } finally {
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+          }
 
       - name: Resolve installer version
         id: version
@@ -75,7 +141,7 @@ jobs:
 
       - name: Release (tagged version)
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             dist/VoiceChanger.exe
@@ -83,7 +149,7 @@ jobs:
 
       - name: Release (rolling build from master)
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         with:
           tag_name: latest-build
           name: "Latest build (auto, unstable)"
