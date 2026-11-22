@@ -54,6 +54,15 @@ os.makedirs(TMP_DIR, exist_ok=True)
 
 def getFrontendPath():
     frontend_path = os.path.join(sys._MEIPASS, "dist") if hasattr(sys, "_MEIPASS") else "../client/demo/dist"
+    try:
+        if not os.path.exists(frontend_path):
+            os.makedirs(frontend_path, exist_ok=True)
+        index_file = os.path.join(frontend_path, "index.html")
+        if not os.path.exists(index_file):
+            with open(index_file, "w", encoding="utf-8") as f:
+                f.write("<!DOCTYPE html><html><body><h1>Voice Changer Frontend</h1><p>Run <code>npm run build:client</code> to generate production assets.</p></body></html>\n")
+    except OSError:
+        pass
     return frontend_path
 
 
