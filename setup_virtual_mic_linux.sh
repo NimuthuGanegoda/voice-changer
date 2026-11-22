@@ -44,6 +44,8 @@ remove_sink() {
 }
 
 install_autostart() {
+    local pactl_bin
+    pactl_bin=$(command -v pactl || echo "/usr/bin/pactl")
     mkdir -p "$SERVICE_DIR"
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
@@ -53,7 +55,7 @@ PartOf=pulseaudio.service pipewire-pulse.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/pactl load-module module-null-sink sink_name=${SINK_NAME} sink_properties=device.description=VoiceChanger_Virtual_Mic
+ExecStart=${pactl_bin} load-module module-null-sink sink_name=${SINK_NAME} sink_properties=device.description=VoiceChanger_Virtual_Mic
 RemainAfterExit=true
 
 [Install]

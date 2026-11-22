@@ -9,8 +9,15 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ ! -f "venv/bin/activate" ]; then
-    echo "No venv/ found. Set it up first:" >&2
+VENV_ACTIVATE=""
+if [ -f "venv/bin/activate" ]; then
+    VENV_ACTIVATE="venv/bin/activate"
+elif [ -f ".venv/bin/activate" ]; then
+    VENV_ACTIVATE=".venv/bin/activate"
+fi
+
+if [ -z "$VENV_ACTIVATE" ]; then
+    echo "No virtualenv (venv/ or .venv/) found. Set it up first:" >&2
     echo "  python3 -m venv venv" >&2
     echo "  source venv/bin/activate" >&2
     echo "  pip install -r server/requirements.txt" >&2
@@ -20,7 +27,7 @@ fi
 python3 -c 'import sys; assert sys.version_info >= (3, 10), "Python 3.10+ is required"'
 
 # Activate the existing virtual environment
-source venv/bin/activate
+source "$VENV_ACTIVATE"
 
 # Start the server with the necessary arguments
 cd server
