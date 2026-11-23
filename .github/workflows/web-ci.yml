@@ -1,0 +1,61 @@
+name: Web CI
+
+on:
+  push:
+    branches: ["master"]
+    paths:
+      - "web/**"
+      - "docs/**"
+      - ".github/workflows/web-ci.yml"
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "web/**"
+      - "docs/**"
+      - ".github/workflows/web-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build and verify docs bundle is in sync
+        run: |
+          npm run build
+          git status --porcelain ../docs
+          if [ -n "$(git status --porcelain ../docs)" ]; then
+            echo "docs/ is out of date with web/. Run 'npm run build' in web/ and commit docs/."
+            git diff --stat ../docs
+            exit 1
+          fi
