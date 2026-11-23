@@ -5,7 +5,7 @@ import shutil
 import threading
 import time
 import numpy as np
-from downloader.SampleDownloader import downloadSample, getSampleInfos
+from downloader.SampleDownloader import downloadSample, get_available_samples
 from mods.log_control import VoiceChangaerLogger
 from voice_changer.Local.ServerDevice import ServerDevice, ServerDeviceCallbacks
 from voice_changer.ModelSlotManager import ModelSlotManager
@@ -207,7 +207,7 @@ class VoiceChangerManager(ServerDeviceCallbacks):
         data = asdict(self.settings)
         data["gpus"] = self.gpus
         data["modelSlots"] = self.modelSlotManager.getAllSlotInfo()
-        data["sampleModels"] = getSampleInfos(self.params.sample_mode, self.params.model_dir, self.params.offline)
+        data["sampleModels"] = get_available_samples(self.params.sample_mode, self.params.model_dir, self.params.offline)
         data["python"] = sys.version
         data["voiceChangerParams"] = self.params
 
