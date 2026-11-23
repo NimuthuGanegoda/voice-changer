@@ -1,9 +1,11 @@
 from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
+import inspect
 import os
 import json
+import numpy as np
 import torch
-from onnxsim import simplify
 import onnx
+from onnx import TensorProto, helper, numpy_helper
 from const import TMP_DIR, EnumInferenceTypes
 from data.ModelSlot import RVCModelSlot
 from voice_changer.RVC.deviceManager.DeviceManager import DeviceManager
@@ -134,21 +136,69 @@ def _export2onnx(input_model, output_model, output_model_simple, is_half, metada
         }
     )
 
-    torch.onnx.export(
-        net_g_onnx,
-        inputs,
-        output_model,
-        dynamic_axes=dynamic_axes,
-        do_constant_folding=False,
-        opset_version=17,
-        verbose=False,
-        input_names=input_names,
-        output_names=output_names,
-    )
+    export_kwargs = {
+        "dynamic_axes": dynamic_axes,
+        "do_constant_folding": False,
+        "opset_version": 17,
+        "verbose": False,
+        "input_names": input_names,
+        "output_names": output_names,
+    }
+    if "dynamo" in inspect.signature(torch.onnx.export).parameters:
+        export_kwargs["dynamo"] = False
+
+    prev_mkldnn = torch.backends.mkldnn.enabled
+    try:
+        if not is_half:
+            torch.backends.mkldnn.enabled = False
+        torch.onnx.export(
+            net_g_onnx,
+            inputs,
+            output_model,
+            **export_kwargs,
+        )
+    finally:
+        torch.backends.mkldnn.enabled = prev_mkldnn
 
     model_onnx2 = onnx.load(output_model)
-    model_simp, check = simplify(model_onnx2)
+    try:
+        from onnxsim import simplify
+
+        model_simp, check = simplify(model_onnx2)
+        if not check:
+            model_simp = model_onnx2
+    except Exception:
+        model_simp = model_onnx2
+
+    if not is_half:
+        _compress_float32_initializers_to_fp16(model_simp)
+
     meta = model_simp.metadata_props.add()
     meta.key = "metadata"
     meta.value = json.dumps(metadata)
     onnx.save(model_simp, output_model_simple)
+
+
+def _compress_float32_initializers_to_fp16(model: onnx.ModelProto, min_elements: int = 256) -> None:
+    """Store large float32 weight tensors in float16 with a Cast-to-float32 node (~50% smaller file)."""
+    existing_names = {init.name for init in model.graph.initializer}
+    cast_nodes = []
+    for init in model.graph.initializer:
+        if init.data_type == TensorProto.FLOAT:
+            arr = numpy_helper.to_array(init)
+            if arr.size >= min_elements:
+                orig_name = init.name
+                fp16_name = f"{orig_name}_fp16"
+                while fp16_name in existing_names:
+                    fp16_name = f"_{fp16_name}"
+                existing_names.add(fp16_name)
+                init.name = fp16_name
+                init.data_type = TensorProto.FLOAT16
+                init.raw_data = arr.astype(np.float16).tobytes()
+                del init.float_data[:]
+                cast_nodes.append(
+                    helper.make_node("Cast", inputs=[fp16_name], outputs=[orig_name], to=TensorProto.FLOAT)
+                )
+    for idx, node in enumerate(cast_nodes):
+        model.graph.node.insert(idx, node)
+

@@ -11,10 +11,27 @@ import {
 } from "./onnxRvcEngine";
 
 describe("onnxRvcEngine pitch & tensor utilities", () => {
-  it("lists verified HTTPS HuggingFace ONNX RVC models", () => {
-    expect(BROWSER_ONNX_MODELS.length).toBeGreaterThanOrEqual(4);
+  it("lists verified HTTPS ONNX RVC models including anime characters", () => {
+    expect(BROWSER_ONNX_MODELS.length).toBeGreaterThanOrEqual(14);
+    const ids = BROWSER_ONNX_MODELS.map((m) => m.id);
+    for (const expectedId of [
+      "ZeninMaki_RVC",
+      "MisaAmane_RVC",
+      "MikasaAckerman_RVC",
+      "HinataHyuga_RVC",
+      "Power_RVC",
+      "Makima_RVC",
+      "RaidenShogun_RVC",
+      "YaeMiko_RVC",
+      "GojoSatoru_RVC",
+    ]) {
+      expect(ids).toContain(expectedId);
+    }
     for (const model of BROWSER_ONNX_MODELS) {
       expect(assertHttpsModelUrl(model.modelUrl)).toMatch(/^https:\/\//);
+      for (const partUrl of model.modelUrls ?? []) {
+        expect(assertHttpsModelUrl(partUrl)).toMatch(/^https:\/\//);
+      }
     }
     expect(() => assertHttpsModelUrl("http://127.0.0.1/model.onnx")).toThrow(/HTTPS/);
     expect(() => assertHttpsModelUrl("javascript:alert(1)")).toThrow(/HTTPS/);

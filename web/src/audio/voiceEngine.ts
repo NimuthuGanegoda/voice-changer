@@ -160,6 +160,13 @@ export class BrowserVoiceEngine {
     return this.uploadedBuffer;
   }
 
+  getOrCreateSampleBuffer(sampleRate = 48000): AudioBuffer {
+    if (!this.cachedSampleBuffer || this.cachedSampleBuffer.sampleRate !== sampleRate) {
+      this.cachedSampleBuffer = generateSynthesizedVocalSample(sampleRate);
+    }
+    return this.cachedSampleBuffer;
+  }
+
   async decodeUploadedFile(file: File): Promise<{ buffer: AudioBuffer; duration: number }> {
     const ctx = this.ctx ?? new AudioContext();
     if (!this.ctx) {
