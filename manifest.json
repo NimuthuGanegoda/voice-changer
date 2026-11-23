@@ -1,0 +1,92 @@
+[
+  {
+    "id": "ZeninMaki_RVC",
+    "sampleRate": 48000,
+    "embChannels": 768,
+    "bytes": 58290021,
+    "parts": [
+      "ZeninMaki_RVC.onnx.part0",
+      "ZeninMaki_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "GojoSatoru_RVC",
+    "sampleRate": 40000,
+    "embChannels": 768,
+    "bytes": 55930725,
+    "parts": [
+      "GojoSatoru_RVC.onnx.part0",
+      "GojoSatoru_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "YaeMiko_RVC",
+    "sampleRate": 40000,
+    "embChannels": 768,
+    "bytes": 55930725,
+    "parts": [
+      "YaeMiko_RVC.onnx.part0",
+      "YaeMiko_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "Makima_RVC",
+    "sampleRate": 40000,
+    "embChannels": 768,
+    "bytes": 55930725,
+    "parts": [
+      "Makima_RVC.onnx.part0",
+      "Makima_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "MisaAmane_RVC",
+    "sampleRate": 48000,
+    "embChannels": 768,
+    "bytes": 58290021,
+    "parts": [
+      "MisaAmane_RVC.onnx.part0",
+      "MisaAmane_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "MikasaAckerman_RVC",
+    "sampleRate": 48000,
+    "embChannels": 768,
+    "bytes": 58290021,
+    "parts": [
+      "MikasaAckerman_RVC.onnx.part0",
+      "MikasaAckerman_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "HinataHyuga_RVC",
+    "sampleRate": 48000,
+    "embChannels": 768,
+    "bytes": 58290021,
+    "parts": [
+      "HinataHyuga_RVC.onnx.part0",
+      "HinataHyuga_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "Power_RVC",
+    "sampleRate": 40000,
+    "embChannels": 768,
+    "bytes": 55930725,
+    "parts": [
+      "Power_RVC.onnx.part0",
+      "Power_RVC.onnx.part1"
+    ]
+  },
+  {
+    "id": "RaidenShogun_RVC",
+    "sampleRate": 40000,
+    "embChannels": 768,
+    "bytes": 55930725,
+    "parts": [
+      "RaidenShogun_RVC.onnx.part0",
+      "RaidenShogun_RVC.onnx.part1"
+    ]
+  }
+]
