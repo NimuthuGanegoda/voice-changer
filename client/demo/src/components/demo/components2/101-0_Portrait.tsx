@@ -8,8 +8,6 @@ const BeatriceSpeakerType = {
 } as const;
 type BeatriceSpeakerType = (typeof BeatriceSpeakerType)[keyof typeof BeatriceSpeakerType];
 
-// @ts-ignore
-import MyIcon from "./female-clickable.svg";
 import { useGuiState } from "../001_GuiStateProvider";
 export const Portrait = (_props: PortraitProps) => {
     const { serverSetting, volume, bufferingTime, performance, webInfoState, webEdition } = useAppState();
@@ -52,7 +50,9 @@ export const Portrait = (_props: PortraitProps) => {
         if (webEdition) {
             buf.innerText = bufferingTime.toString();
             res.innerText = webInfoState.responseTimeInfo.responseTime.toString() ?? "0";
-            rtf.innerText = webInfoState.responseTimeInfo.rtf.toString() ?? "0";
+            if (rtf) {
+                rtf.innerText = webInfoState.responseTimeInfo.rtf.toString() ?? "0";
+            }
         } else {
             buf.innerText = bufferingTime.toString();
             res.innerText = performance.responseTime.toString();
@@ -66,6 +66,9 @@ export const Portrait = (_props: PortraitProps) => {
         }
         // @ts-ignore
         const svgDoc = iframe.contentDocument;
+        if (!svgDoc) {
+            return;
+        }
         const gElements = svgDoc.getElementsByClassName("beatrice-node-pointer");
         for (const gElement of gElements) {
             gElement.classList.remove("beatrice-node-pointer-selected");
@@ -102,6 +105,9 @@ export const Portrait = (_props: PortraitProps) => {
         const setOnClick = () => {
             // @ts-ignore
             const svgDoc = iframe.contentDocument;
+            if (!svgDoc) {
+                return;
+            }
 
             const gElements = svgDoc.getElementsByClassName("beatrice-node-pointer");
             const textElements = svgDoc.getElementsByClassName("beatrice-text-pointer");
@@ -169,10 +175,10 @@ export const Portrait = (_props: PortraitProps) => {
             );
         } else {
             const modelDir = serverSetting.serverSetting.modelSlotIndex == "Beatrice-JVS" ? "model_dir_static" : serverSetting.serverSetting.voiceChangerParams.model_dir;
-            const icon = selected.iconFile.length > 0 ? modelDir + "/" + selected.slotIndex + "/" + selected.iconFile.split(/[\/\\]/).pop() : "./assets/icons/human.png";
+            const icon = selected.iconFile.length > 0 ? modelDir + "/" + selected.slotIndex + "/" + selected.iconFile.split(/[/\\]/).pop() : "./assets/icons/human.png";
             portrait = <img className="portrait" src={icon} alt={selected.name} />;
         }
-        const selectedTermOfUseUrlLink = selected.termsOfUseUrl ? (
+        const selectedTermOfUseUrlLink = selected.termsOfUseUrl && /^https?:\/\//i.test(selected.termsOfUseUrl) ? (
             <a href={selected.termsOfUseUrl} target="_blank" rel="noopener noreferrer" className="portrait-area-terms-of-use-link">
                 [{messageBuilderState.getMessage(__filename, "terms_of_use")}]
             </a>

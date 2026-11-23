@@ -196,3 +196,155 @@ def test_voice_changer_v2_sola_clipping_and_warmup_and_small_crossfade():
     assert clipped.shape == (1024,)
     assert int(clipped.min()) >= 0
     assert int(clipped.max()) == 32767
+
+    # Null-model guards on sample rate & export2onnx must not raise AttributeError.
+    empty_vc = VoiceChangerV2(VoiceChangerParams(
+        model_dir="model_dir", content_vec_500="", content_vec_500_onnx="", content_vec_500_onnx_on=True,
+        hubert_base="", hubert_base_jp="", hubert_soft="", nsf_hifigan="",
+        crepe_onnx_full="", crepe_onnx_tiny="", rmvpe="", rmvpe_onnx="",
+        sample_mode="production", whisper_tiny="", offline=True,
+    ))
+    empty_vc.setInputSampleRate(24000)
+    empty_vc.setOutputSampleRate(24000)
+    assert empty_vc.export2onnx()["status"] == "ng"
+
+
+def test_rvcr2_zero_crossfade_silence_length_and_half_precision_reraise():
+    import math
+    import numpy as np
+    import torch
+    from data.ModelSlot import RVCModelSlot
+    from Exceptions import DeviceCannotSupportHalfPrecisionException
+    from voice_changer.RVC.RVCr2 import RVCr2
+    from voice_changer.RVC.RVCSettings import RVCSettings
+
+    rvc = RVCr2.__new__(RVCr2)
+    rvc.settings = RVCSettings()
+    rvc.settings.extraConvertSize = 0
+    rvc.settings.silentThreshold = 0.01
+    rvc.slotInfo = RVCModelSlot(samplingRate=48000, f0=True, embChannels=256)
+    rvc.inputSampleRate = 48000
+    rvc.outputSampleRate = 48000
+    rvc.audio_buffer = None
+    rvc.pitchf_buffer = None
+    rvc.feature_buffer = None
+    rvc.prevVol = 0.0
+    rvc.rawVol = 0.0
+
+    # crossfadeSize == 0 must not slice [-N:0] -> empty -> NaN!
+    chunk_16k = np.full(1600, 1000, dtype=np.int16)
+    data = rvc.generate_input(chunk_16k, crossfadeSize=0, solaSearchFrame=192, extra_frame=0)
+    assert math.isfinite(rvc.rawVol) and rvc.rawVol > 0
+    assert math.isfinite(data[4])
+
+    # Silent chunk must return output-sample-rate length sufficient for VoiceChangerV2 SOLA.
+    rvc.pipeline = SimpleNamespace(device=torch.device("cpu"))
+    silent_in = np.zeros(4096, dtype=np.int16)
+    silent_out = rvc.inference(silent_in, crossfade_frame=1024, sola_search_frame=576)
+    assert silent_out.shape[0] >= 4096 + 1024 + 576
+    assert np.all(silent_out == 0)
+
+    # Half-precision fallback must set forceTensor=True, reinitialize, and re-raise (not return None).
+    events = []
+    class FailingPipeline:
+        device = torch.device("cpu")
+        def exec(self, *args, **kwargs):
+            raise DeviceCannotSupportHalfPrecisionException()
+
+    rvc.pipeline = FailingPipeline()
+    rvc.deviceManager = SimpleNamespace(setForceTensor=lambda flag: events.append(("force", flag)))
+    rvc.initialize = lambda: events.append(("init", True))
+    loud_in = np.full(4096, 8000, dtype=np.int16)
+    with pytest.raises(DeviceCannotSupportHalfPrecisionException):
+        rvc.inference(loud_in, crossfade_frame=1024, sola_search_frame=576)
+    assert events == [("force", True), ("init", True)]
+
+
+def test_rvc_pipeline_non_f0_protect_and_single_row_index():
+    import numpy as np
+    import torch
+    from voice_changer.RVC.pipeline.Pipeline import Pipeline
+
+    class FakeIndex:
+        ntotal = 4
+        def reconstruct_n(self, _start, n):
+            return np.ones((n, 4), dtype=np.float32)
+        def search(self, query, k):
+            # Single-row search produces shape (1, 1); must stay 2-D after indexing!
+            return np.zeros((query.shape[0], k), dtype=np.float32), np.zeros((query.shape[0], k), dtype=np.int64)
+
+    class FakeEmbedder:
+        def extractFeatures(self, _feats, _layer, _proj):
+            return torch.ones((1, 1, 4), dtype=torch.float32)
+
+    class FakeInferencer:
+        def infer(self, feats, _p_len, _pitch, _pitchf, _sid, _out_size):
+            return torch.zeros(feats.shape[1] * 160, dtype=torch.float32)
+
+    class FakePitch:
+        def extract(self, *args, **kwargs):
+            raise AssertionError("pitch extractor should not run when if_f0 == 0")
+
+    pipeline = Pipeline(FakeEmbedder(), FakeInferencer(), FakePitch(), FakeIndex(), 48000, torch.device("cpu"), False)
+    audio = torch.zeros(320, dtype=torch.float32)
+    feature = np.zeros((4, 4), dtype=np.float32)
+    audio_out, pitchf_buf, feats_buf = pipeline.exec(
+        sid=0, audio=audio, pitchf=None, feature=feature, f0_up_key=0,
+        index_rate=0.5, if_f0=0, silence_front=0.0, embOutputLayer=9,
+        useFinalProj=True, repeat=0, protect=0.33, out_size=320,
+    )
+    assert pitchf_buf is None
+    assert feats_buf.shape == (2, 4)
+    assert audio_out.shape[0] == 320
+
+
+def test_device_manager_half_precision_allows_16gb_rtx_blocks_gtx_16xx(monkeypatch):
+    import torch
+    from voice_changer.RVC.deviceManager.DeviceManager import DeviceManager
+
+    dm = DeviceManager.__new__(DeviceManager)
+    dm.gpu_num = 1
+    dm.forceTensor = False
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda _i: (8, 9))
+
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda _i: "NVIDIA GeForce RTX 4060 Ti 16GB")
+    assert dm.halfPrecisionAvailable(0) is True
+
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda _i: "NVIDIA GeForce GTX 1660 SUPER")
+    assert dm.halfPrecisionAvailable(0) is False
+
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda _i: "NVIDIA GeForce GTX 1650")
+    assert dm.halfPrecisionAvailable(0) is False
+
+
+def test_rmvpe_onnx_short_audio_and_empty_f0_and_nono_v22():
+    import numpy as np
+    import torch
+    from voice_changer.RVC.pitchExtractor.RMVPEOnnxPitchExtractor import RMVPEOnnxPitchExtractor
+    from voice_changer.RVC.inferencer.OnnxRVCInferencerNono import OnnxRVCInferencerNono
+
+    ext = RMVPEOnnxPitchExtractor.__new__(RMVPEOnnxPitchExtractor)
+    ext.f0_min = 50
+    ext.f0_max = 1100
+    ext.f0_mel_min = 1127 * np.log(1 + ext.f0_min / 700)
+    ext.f0_mel_max = 1127 * np.log(1 + ext.f0_max / 700)
+
+    # 1) Scalar 1-frame output + silence_front larger than audio (triggers minimumFrames slice).
+    ext.onnx_session = SimpleNamespace(run=lambda _out, _inp: [np.array([[[220.0]]], dtype=np.float32)])
+    coarse, pitchf = ext.extract(np.zeros(320, dtype=np.float32), np.zeros(4, dtype=np.float32), 0, 16000, 160, silence_front=1.0)
+    assert coarse.shape == (4,)
+    assert pitchf[-1] == pytest.approx(220.0)
+
+    # 2) Empty 0-frame output must not raise broadcast ValueError.
+    ext.onnx_session = SimpleNamespace(run=lambda _out, _inp: [np.zeros((1, 0), dtype=np.float32)])
+    coarse0, pitchf0 = ext.extract(np.zeros(320, dtype=np.float32), np.zeros(4, dtype=np.float32), 0, 16000, 160, silence_front=0.0)
+    assert coarse0.shape == (4,)
+    assert np.all(pitchf0 == 0)
+
+    # 3) OnnxRVCInferencerNono v2.2 returns audio1[0] directly without 3D indexing crash.
+    nono = OnnxRVCInferencerNono.__new__(OnnxRVCInferencerNono)
+    nono.isHalf = False
+    nono.inferencerTypeVersion = "v2.2"
+    nono.model = SimpleNamespace(run=lambda _out, _inp: [np.array([0.1, -0.2], dtype=np.float32)])
+    out = nono.infer(torch.zeros((1, 2, 768)), torch.tensor([2]), None, None, torch.tensor([0]), None)
+    assert out.shape == (2,)

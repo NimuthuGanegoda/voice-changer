@@ -47,3 +47,23 @@ def test_model_delete_and_legacy_model_type_routes_exist(client):
     assert response.status_code == 200
     assert response.json()["deleted"] == 3
     assert client.get("/model_type").json()["voiceChangerType"] == "RVC"
+
+
+def test_validation_error_route_handles_non_utf8_body():
+    from fastapi import FastAPI
+    from pydantic import BaseModel
+    from restapi.MMVC_Rest import ValidationErrorLoggingRoute
+
+    class Payload(BaseModel):
+        value: int
+
+    app = FastAPI()
+    app.router.route_class = ValidationErrorLoggingRoute
+
+    @app.post("/check")
+    def check(payload: Payload):
+        return {"value": payload.value}
+
+    response = TestClient(app).post("/check", content=b"\xff\xfe\xfd", headers={"content-type": "application/json"})
+    assert response.status_code == 422
+    assert "errors" in response.json()["detail"]

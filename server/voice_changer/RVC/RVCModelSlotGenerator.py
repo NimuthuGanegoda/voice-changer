@@ -118,12 +118,7 @@ class RVCModelSlotGenerator(ModelSlotGenerator):
             slot.embChannels = metadata["embChannels"]
 
             slot.embOutputLayer = metadata["embOutputLayer"] if "embOutputLayer" in metadata else 9
-            slot.useFinalProj = metadata["useFinalProj"] if "useFinalProj" in metadata else True if slot.embChannels == 256 else False
-
-            if slot.embChannels == 256:
-                slot.useFinalProj = True
-            else:
-                slot.useFinalProj = False
+            slot.useFinalProj = bool(metadata["useFinalProj"]) if "useFinalProj" in metadata else (slot.embChannels == 256)
 
             # ONNXモデルの情報を表示
             if slot.embChannels == 256 and slot.embOutputLayer == 9 and slot.useFinalProj is True:
@@ -133,26 +128,27 @@ class RVCModelSlotGenerator(ModelSlotGenerator):
             else:
                 print(f"[Voice Changer] ONNX Model: ch:{slot.embChannels}, L:{slot.embOutputLayer}, FP:{slot.useFinalProj}")
 
-            if "embedder" not in metadata:
+            if "embedder" not in metadata or not metadata["embedder"]:
                 slot.embedder = "hubert_base"
             else:
-                slot.embedder = metadata["embedder"]
+                slot.embedder = normalize_embedder(metadata["embedder"])
 
-            slot.f0 = metadata["f0"]
+            slot.f0 = bool(metadata["f0"])
             slot.modelType = EnumInferenceTypes.onnxRVC.value if slot.f0 else EnumInferenceTypes.onnxRVCNono.value
             slot.samplingRate = metadata["samplingRate"]
             slot.deprecated = False
 
+            version = str(metadata.get("version", ""))
             if slot.embChannels == 256:
-                if metadata["version"] == "2.1":
+                if version == "2.1":
                     slot.version = "v1.1"  # 1.1はclipをonnx内部で実施. realtimeをdisable
                 else:
                     slot.version = "v1"
-            elif metadata["version"] == "2":
+            elif version == "2":
                 slot.version = "v2"
-            elif metadata["version"] == "2.1":  # 2.1はclipをonnx内部で実施. realtimeをdisable
+            elif version == "2.1":  # 2.1はclipをonnx内部で実施. realtimeをdisable
                 slot.version = "v2.1"
-            elif metadata["version"] == "2.2":  # 2.1と同じ
+            elif version == "2.2":  # 2.1と同じ
                 slot.version = "v2.2"
         except Exception as e:
             slot.modelType = EnumInferenceTypes.onnxRVC.value

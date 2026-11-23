@@ -33,10 +33,12 @@ class RMVPEOnnxPitchExtractor(PitchExtractor):
         try:
             # データ変換
             if isinstance(audio, np.ndarray) is False:
-                audio = audio = audio.cpu().numpy()
+                audio = audio.cpu().numpy()
 
             if isinstance(pitchf, np.ndarray) is False:
                 pitchf = pitchf.cpu().numpy().astype(np.float32)
+            else:
+                pitchf = pitchf.copy()
 
             if audio.ndim != 1:
                 raise RuntimeError(f"Exeption in {self.__class__.__name__} audio.ndim is not 1 (size :{audio.ndim}, {audio.shape})")
@@ -48,8 +50,8 @@ class RMVPEOnnxPitchExtractor(PitchExtractor):
             startWindow = int(silenceFrontFrame / window)  # 小数点以下切り捨て
             slienceFrontFrameOffset = startWindow * window
             targetFrameLength = len(audio) - slienceFrontFrameOffset
-            minimumFrames = 0.01 * sr
-            targetFrameLength = max(minimumFrames, targetFrameLength)
+            minimumFrames = max(1, int(0.01 * sr))
+            targetFrameLength = int(max(minimumFrames, targetFrameLength))
             audio = audio[-targetFrameLength:]
             audio = np.expand_dims(audio, axis=0)
 
@@ -61,10 +63,12 @@ class RMVPEOnnxPitchExtractor(PitchExtractor):
                 },
             )
 
-            f0 = output[0].squeeze()
+            f0 = np.atleast_1d(output[0].squeeze())
 
-            f0 *= pow(2, f0_up_key / 12)
-            pitchf[-f0.shape[0]:] = f0[: pitchf.shape[0]]
+            f0 = f0 * pow(2, f0_up_key / 12)
+            n = min(f0.shape[0], pitchf.shape[0])
+            if n > 0:
+                pitchf[-n:] = f0[:n]
 
             f0_mel = 1127.0 * np.log(1.0 + pitchf / 700.0)
             f0_mel[f0_mel > 0] = (f0_mel[f0_mel > 0] - self.f0_mel_min) * 254 / (self.f0_mel_max - self.f0_mel_min) + 1

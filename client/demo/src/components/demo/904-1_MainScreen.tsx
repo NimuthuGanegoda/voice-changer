@@ -44,12 +44,19 @@ export const MainScreen = (props: MainScreenProps) => {
                 return;
             }
 
-            const file = await fileSelector("");
-            if (checkExtention(file.name, ["png", "jpg", "jpeg", "gif"]) == false) {
-                alert(`サムネイルの拡張子は".png", ".jpg", ".jpeg", ".gif"である必要があります。`);
-                return;
+            try {
+                const file = await fileSelector("");
+                if (!file) {
+                    return;
+                }
+                if (checkExtention(file.name, ["png", "jpg", "jpeg", "gif"]) == false) {
+                    alert(`サムネイルの拡張子は".png", ".jpg", ".jpeg", ".gif"である必要があります。`);
+                    return;
+                }
+                await serverSetting.uploadAssets(index, "iconFile", file);
+            } catch (error) {
+                alert(error instanceof Error ? error.message : String(error));
             }
-            await serverSetting.uploadAssets(index, "iconFile", file);
         };
 
         const nameValueAction = async (index: number) => {
@@ -65,8 +72,11 @@ export const MainScreen = (props: MainScreenProps) => {
 
             // Send to Server
             if (text.length > 0) {
-                console.log("input text:", text);
-                await serverSetting.updateModelInfo(index, "name", text);
+                try {
+                    await serverSetting.updateModelInfo(index, "name", text);
+                } catch (error) {
+                    alert(error instanceof Error ? error.message : String(error));
+                }
             }
         };
 
@@ -89,7 +99,7 @@ export const MainScreen = (props: MainScreenProps) => {
             }
             const link = document.createElement("a");
             link.href = "./" + url;
-            link.download = url.replace(/^.*[\\\/]/, "");
+            link.download = url.replace(/^.*[\\/]/, "");
             link.click();
             link.remove();
         };
@@ -116,7 +126,7 @@ export const MainScreen = (props: MainScreenProps) => {
             const generateIconArea = (slotIndex: number, iconUrl: string | null, tooltip: boolean) => {
                 let realIconUrl = MODEL_ICON_BLANK_URL;
                 if (iconUrl) {
-                    realIconUrl = iconUrl.length > 0 ? serverSetting.serverSetting.voiceChangerParams.model_dir + "/" + slotIndex + "/" + iconUrl.split(/[\/\\]/).pop() : "assets/icons/noimage.png";
+                    realIconUrl = iconUrl.length > 0 ? serverSetting.serverSetting.voiceChangerParams.model_dir + "/" + slotIndex + "/" + iconUrl.split(/[/\\]/).pop() : "assets/icons/noimage.png";
                 }
                 const iconDivClass = tooltip ? "tooltip" : "";
                 const iconClass = tooltip ? "model-slot-icon-pointable" : "model-slot-icon";
@@ -139,7 +149,7 @@ export const MainScreen = (props: MainScreenProps) => {
                 const nameValueClass = name.length > 0 ? "model-slot-detail-row-value-pointable tooltip" : "model-slot-detail-row-value";
                 const displayName = name.length > 0 ? name : "blank";
                 const termOfUseUrlLink =
-                    termsOfUseUrl.length > 0 ? (
+                    /^https?:\/\//i.test(termsOfUseUrl) ? (
                         <a href={termsOfUseUrl} target="_blank" rel="noopener noreferrer" className="body-item-text-small">
                             [{messageBuilderState.getMessage(__filename, "terms_of_use")}]
                         </a>

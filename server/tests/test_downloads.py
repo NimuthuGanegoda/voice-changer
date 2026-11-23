@@ -65,3 +65,21 @@ def test_cached_catalog_works_offline(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "download_no_tqdm", offline)
     # Other catalogs are unavailable, but the valid cached catalog still loads.
     assert any(sample.id == "test" for sample in module.getSampleInfos("production", str(tmp_path)))
+
+
+def test_gzip_encoded_download_ignores_compressed_content_length(tmp_path, monkeypatch):
+    target = tmp_path / "catalog.json"
+    decompressed = b'{"RVC": [{"id": "sample"}]}' * 20
+    # Wire content-length is smaller than the decompressed bytes yielded by iter_content().
+    headers = {"content-length": "42", "content-encoding": "gzip"}
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Response([decompressed], headers=headers))
+    download_to_file("https://example/catalog.json", str(target), show_progress=False)
+    assert target.read_bytes() == decompressed
+
+
+def test_sample_url_filename_strips_query_and_fragment():
+    import downloader.SampleDownloader as module
+    assert module._url_filename("https://example/files/model.onnx?download=true#top") == "model.onnx"
+    catalog = module._catalog_path("https://example/samples.json?v=1", "models")
+    assert "?" not in catalog.name
+    assert catalog.name.endswith("-samples.json")

@@ -884,7 +884,7 @@ export const DeviceArea = (_props: DeviceAreaProps) => {
                         <span className="character-area-slider-control-slider">
                             <input
                                 type="range"
-                                min="0.1"
+                                min="0.0"
                                 max="10.0"
                                 step="0.1"
                                 value={currentMonitorGain}
@@ -924,14 +924,14 @@ export const DeviceArea = (_props: DeviceAreaProps) => {
 
 const downloadRecord = (data: Float32Array) => {
     const writeString = (view: DataView, offset: number, string: string) => {
-        for (var i = 0; i < string.length; i++) {
+        for (let i = 0; i < string.length; i++) {
             view.setUint8(offset + i, string.charCodeAt(i));
         }
     };
 
     const floatTo16BitPCM = (output: DataView, offset: number, input: Float32Array) => {
-        for (var i = 0; i < input.length; i++, offset += 2) {
-            var s = Math.max(-1, Math.min(1, input[i]));
+        for (let i = 0; i < input.length; i++, offset += 2) {
+            const s = Math.max(-1, Math.min(1, input[i]));
             output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
         }
     };

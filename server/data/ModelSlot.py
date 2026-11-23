@@ -5,6 +5,9 @@ from dataclasses import dataclass, asdict, field
 
 import os
 import json
+from mods.log_control import VoiceChangaerLogger
+
+logger = VoiceChangaerLogger.get_instance().getLogger()
 
 
 @dataclass
@@ -25,7 +28,7 @@ class RVCModelSlot(ModelSlot):
     modelFile: str = ""
     indexFile: str = ""
     defaultTune: int = 0
-    defaultIndexRatio: int = 0
+    defaultIndexRatio: float = 0.0
     defaultProtect: float = 0.5
     isONNX: bool = False
     modelType: str = EnumInferenceTypes.pyTorchRVC.value
@@ -168,8 +171,15 @@ def loadSlotInfo(model_dir: str, slotIndex: int | StaticSlot) -> ModelSlots:
     jsonFile = os.path.join(slotDir, "params.json")
     if not os.path.exists(jsonFile):
         return ModelSlot()
-    with open(jsonFile, encoding="utf-8") as source:
-        jsonDict = json.load(source)
+    try:
+        with open(jsonFile, encoding="utf-8") as source:
+            jsonDict = json.load(source)
+        if not isinstance(jsonDict, dict):
+            logger.warning("Ignoring non-object slot metadata at %s", jsonFile)
+            return ModelSlot()
+    except (OSError, ValueError) as exc:
+        logger.warning("Ignoring corrupt slot metadata at %s: %s", jsonFile, exc)
+        return ModelSlot()
     slotInfoKey = list(ModelSlot.__annotations__.keys())
     slotInfo = ModelSlot(**{k: v for k, v in jsonDict.items() if k in slotInfoKey})
     if slotInfo.voiceChangerType == "RVC":
@@ -219,7 +229,7 @@ def loadAllSlotInfo(model_dir: str):
 
 def saveSlotInfo(model_dir: str, slotIndex: int, slotInfo: ModelSlots):
     slotDir = os.path.join(model_dir, str(slotIndex))
-    print("SlotInfo:::", slotInfo)
+    logger.debug("SlotInfo::: %s", slotInfo)
     slotInfoDict = asdict(slotInfo)
     # Keep the in-memory index stable after saving metadata.
     from voice_changer.utils.AtomicFile import write_json_atomic

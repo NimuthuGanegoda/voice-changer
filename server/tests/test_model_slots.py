@@ -76,3 +76,16 @@ def test_icon_assets_are_limited_to_images(manager, tmp_path, monkeypatch):
     (uploads / "bad.svg").write_bytes(b"<svg/>")
     with pytest.raises(ValueError):
         manager.store_model_assets(json.dumps({"slot": 2, "name": "iconFile", "file": "bad.svg"}))
+
+
+def test_corrupt_slot_metadata_falls_back_to_empty_slot(tmp_path):
+    from data.ModelSlot import loadSlotInfo
+    slot_dir = tmp_path / "0"
+    slot_dir.mkdir()
+    (slot_dir / "params.json").write_text("{corrupt json", encoding="utf-8")
+    loaded = loadSlotInfo(str(tmp_path), 0)
+    assert loaded.voiceChangerType is None
+
+    (slot_dir / "params.json").write_text("[1, 2, 3]", encoding="utf-8")
+    loaded_list = loadSlotInfo(str(tmp_path), 0)
+    assert loaded_list.voiceChangerType is None

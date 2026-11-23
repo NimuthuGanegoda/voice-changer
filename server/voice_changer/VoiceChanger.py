@@ -341,6 +341,8 @@ class VoiceChanger(VoiceChangerIF):
             return np.zeros(1).astype(np.int16), [0, 0, 0]
 
     def export2onnx(self):
+        if self.voiceChanger is None:
+            return {"status": "ng", "path": ""}
         return self.voiceChanger.export2onnx()
 
         ##############

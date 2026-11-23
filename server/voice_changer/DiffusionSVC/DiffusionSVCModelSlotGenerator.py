@@ -47,7 +47,7 @@ class DiffusionSVCModelSlotGenerator(ModelSlotGenerator):
         slot.nnLayers = naive_args.model.n_layers
         slot.defaultKstep = slot.kStepMax
         divs = get_divisors(slot.defaultKstep)
-        slot.defaultSpeedup = divs[-2]
+        slot.defaultSpeedup = divs[-2] if len(divs) >= 2 else 1
         slot.speakers = {(x+1): f"user{x+1}" for x in range(diff_args.model.n_spk)}
         return slot
 

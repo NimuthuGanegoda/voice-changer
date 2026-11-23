@@ -24,6 +24,10 @@ def create_self_signed_cert(certfile, keyfile, certargs, cert_dir="."):
         os.makedirs(cert_dir, exist_ok=True)
         with open(C_F, "wb") as output:
             output.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
-        with open(K_F, "wb") as output:
-            os.chmod(K_F, 0o600)
+        key_fd = os.open(K_F, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(key_fd, "wb") as output:
             output.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k))
+        try:
+            os.chmod(K_F, 0o600)
+        except OSError:
+            pass
