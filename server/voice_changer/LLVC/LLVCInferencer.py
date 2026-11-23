@@ -3,6 +3,7 @@ import torch
 import json
 from voice_changer.LLVC.model.llvc import Net
 
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 from voice_changer.utils.VoiceChangerModel import AudioInOutFloat
 
 
@@ -11,7 +12,7 @@ class LLVCInferencer:
         with open(config_path) as f:
             config = json.load(f)
         model = Net(**config["model_params"])
-        model.load_state_dict(torch.load(checkpoint_path, map_location="cpu")["model"])
+        model.load_state_dict(load_rvc_checkpoint(checkpoint_path, map_location="cpu")["model"])
 
         self.config = config
         self.model = model

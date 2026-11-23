@@ -24,7 +24,7 @@ STORED_PRESETS_FILE = "stored_presets.json"
 
 SERVER_DEVICE_SAMPLE_RATES = [16000, 32000, 44100, 48000, 96000, 192000]
 
-tmpdir = tempfile.TemporaryDirectory()
+tmpdir = tempfile.TemporaryDirectory() if hasattr(sys, "_MEIPASS") else None
 SSL_KEY_DIR = os.path.join(tmpdir.name, "keys") if hasattr(sys, "_MEIPASS") else "keys"
 MODEL_DIR = os.path.join(tmpdir.name, "logs") if hasattr(sys, "_MEIPASS") else "logs"
 UPLOAD_DIR = os.path.join(tmpdir.name, "upload_dir") if hasattr(sys, "_MEIPASS") else "upload_dir"

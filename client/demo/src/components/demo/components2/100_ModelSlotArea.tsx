@@ -6,7 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 export type ModelSlotAreaProps = {};
 
-const SortTypes = {
+export const SortTypes = {
     slot: "slot",
     name: "name",
 } as const;
@@ -42,7 +42,7 @@ export const ModelSlotArea = (_props: ModelSlotAreaProps) => {
                 const name = x.name.length > 8 ? x.name.substring(0, 7) + "..." : x.name;
 
                 const modelDir = x.slotIndex == "Beatrice-JVS" ? "model_dir_static" : serverSetting.serverSetting.voiceChangerParams.model_dir;
-                const icon = x.iconFile.length > 0 ? modelDir + "/" + x.slotIndex + "/" + x.iconFile.split(/[\/\\]/).pop() : "./assets/icons/human.png";
+                const icon = x.iconFile.length > 0 ? modelDir + "/" + x.slotIndex + "/" + x.iconFile.split(/[/\\]/).pop() : "./assets/icons/human.png";
 
                 const iconElem =
                     x.iconFile.length > 0 ? (

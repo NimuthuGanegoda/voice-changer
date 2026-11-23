@@ -8,8 +8,6 @@ const BeatriceSpeakerType = {
 } as const;
 type BeatriceSpeakerType = (typeof BeatriceSpeakerType)[keyof typeof BeatriceSpeakerType];
 
-// @ts-ignore
-import MyIcon from "./female-clickable.svg";
 import { useGuiState } from "../001_GuiStateProvider";
 export const Portrait = (_props: PortraitProps) => {
     const { serverSetting, volume, bufferingTime, performance, webInfoState, webEdition } = useAppState();
@@ -169,7 +167,7 @@ export const Portrait = (_props: PortraitProps) => {
             );
         } else {
             const modelDir = serverSetting.serverSetting.modelSlotIndex == "Beatrice-JVS" ? "model_dir_static" : serverSetting.serverSetting.voiceChangerParams.model_dir;
-            const icon = selected.iconFile.length > 0 ? modelDir + "/" + selected.slotIndex + "/" + selected.iconFile.split(/[\/\\]/).pop() : "./assets/icons/human.png";
+            const icon = selected.iconFile.length > 0 ? modelDir + "/" + selected.slotIndex + "/" + selected.iconFile.split(/[/\\]/).pop() : "./assets/icons/human.png";
             portrait = <img className="portrait" src={icon} alt={selected.name} />;
         }
         const selectedTermOfUseUrlLink = selected.termsOfUseUrl ? (

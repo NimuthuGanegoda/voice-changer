@@ -47,3 +47,13 @@ def test_model_delete_and_legacy_model_type_routes_exist(client):
     assert response.status_code == 200
     assert response.json()["deleted"] == 3
     assert client.get("/model_type").json()["voiceChangerType"] == "RVC"
+
+
+def test_validation_error_with_binary_body_returns_422_and_no_unfrozen_tmpdir(client):
+    import const
+    import sys
+
+    if not hasattr(sys, "_MEIPASS"):
+        assert const.tmpdir is None
+    response = client.post("/delete_model", content=b"\xff\xfe\xfa", headers={"Content-Type": "application/json"})
+    assert response.status_code == 422

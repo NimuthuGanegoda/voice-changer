@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import json
 import os
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 hann_window = {}
 
 
@@ -99,7 +100,7 @@ class HParams():
 def load_checkpoint(checkpoint_path, model, optimizer=None):
     # 正式版チェックOK
     assert os.path.isfile(checkpoint_path), f"No such file or directory: {checkpoint_path}"
-    checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint_dict = load_rvc_checkpoint(checkpoint_path, map_location="cpu")
     iteration = checkpoint_dict['iteration']
     learning_rate = checkpoint_dict['learning_rate']
     if optimizer is not None:

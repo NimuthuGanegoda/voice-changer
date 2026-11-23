@@ -5,6 +5,7 @@ import numpy as np
 from librosa.filters import mel
 
 from mods.log_control import VoiceChangaerLogger
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 logger = VoiceChangaerLogger.get_instance().getLogger()
 
@@ -336,7 +337,7 @@ class RMVPE:
     def __init__(self, model_path, is_half, device=None):
         self.resample_kernel = {}
         model = E2E(4, 1, (2, 2))
-        ckpt = torch.load(model_path, map_location="cpu")
+        ckpt = load_rvc_checkpoint(model_path, map_location="cpu")
         model.load_state_dict(ckpt)
         model.eval()
         if is_half is True:

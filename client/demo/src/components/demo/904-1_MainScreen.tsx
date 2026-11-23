@@ -89,7 +89,7 @@ export const MainScreen = (props: MainScreenProps) => {
             }
             const link = document.createElement("a");
             link.href = "./" + url;
-            link.download = url.replace(/^.*[\\\/]/, "");
+            link.download = url.replace(/^.*[\\/]/, "");
             link.click();
             link.remove();
         };
@@ -116,7 +116,7 @@ export const MainScreen = (props: MainScreenProps) => {
             const generateIconArea = (slotIndex: number, iconUrl: string | null, tooltip: boolean) => {
                 let realIconUrl = MODEL_ICON_BLANK_URL;
                 if (iconUrl) {
-                    realIconUrl = iconUrl.length > 0 ? serverSetting.serverSetting.voiceChangerParams.model_dir + "/" + slotIndex + "/" + iconUrl.split(/[\/\\]/).pop() : "assets/icons/noimage.png";
+                    realIconUrl = iconUrl.length > 0 ? serverSetting.serverSetting.voiceChangerParams.model_dir + "/" + slotIndex + "/" + iconUrl.split(/[/\\]/).pop() : "assets/icons/noimage.png";
                 }
                 const iconDivClass = tooltip ? "tooltip" : "";
                 const iconClass = tooltip ? "model-slot-icon-pointable" : "model-slot-icon";

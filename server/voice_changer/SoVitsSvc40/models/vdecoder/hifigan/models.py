@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 from .utils import init_weights, get_padding
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 LRELU_SLOPE = 0.1
 
@@ -23,7 +24,7 @@ def load_model(model_path, device="cuda"):
 
     generator = Generator(h).to(device)
 
-    cp_dict = torch.load(model_path)
+    cp_dict = load_rvc_checkpoint(model_path, map_location="cpu")
     generator.load_state_dict(cp_dict["generator"])
     generator.eval()
     generator.remove_weight_norm()

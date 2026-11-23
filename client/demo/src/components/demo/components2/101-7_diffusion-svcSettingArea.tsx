@@ -117,10 +117,10 @@ export const DiffusionSVCSettingArea = (_props: DiffusionSVCSettingAreaProps) =>
 };
 
 const getDivisors = (num: number) => {
-    var divisors = [];
-    var end = Math.sqrt(num);
+    const divisors = [];
+    const end = Math.sqrt(num);
 
-    for (var i = 1; i <= end; i++) {
+    for (let i = 1; i <= end; i++) {
         if (num % i === 0) {
             divisors.push(i);
             if (i !== num / i) {

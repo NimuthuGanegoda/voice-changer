@@ -34,7 +34,7 @@ class ValidationErrorLoggingRoute(APIRoute):
             except RequestValidationError as exc:  # type: ignore
                 print("Exception", request.url, str(exc))
                 body = await request.body()
-                detail = {"errors": exc.errors(), "body": body.decode()}
+                detail = {"errors": exc.errors(), "body": body[:4096].decode("utf-8", errors="replace")}
                 raise HTTPException(status_code=422, detail=detail)
 
         return custom_route_handler
