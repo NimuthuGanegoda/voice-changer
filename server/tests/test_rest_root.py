@@ -57,3 +57,40 @@ def test_validation_error_with_binary_body_returns_422_and_no_unfrozen_tmpdir(cl
         assert const.tmpdir is None
     response = client.post("/delete_model", content=b"\xff\xfe\xfa", headers={"Content-Type": "application/json"})
     assert response.status_code == 422
+
+
+def test_validation_error_route_handles_non_utf8_and_form_bodies():
+    from fastapi import FastAPI, Form
+    from pydantic import BaseModel
+    from restapi.MMVC_Rest import ValidationErrorLoggingRoute
+
+    class Payload(BaseModel):
+        value: int
+
+    app = FastAPI()
+    app.router.route_class = ValidationErrorLoggingRoute
+
+    @app.post("/check_json")
+    def check_json(payload: Payload):
+        return {"value": payload.value}
+
+    @app.post("/check_form")
+    def check_form(value: int = Form(...)):
+        return {"value": value}
+
+    bin_res = TestClient(app).post(
+        "/check_json",
+        content=b"\xff\xfe\xfd",
+        headers={"content-type": "application/octet-stream"},
+    )
+    assert bin_res.status_code == 422
+    assert "errors" in bin_res.json()["detail"]
+    assert "\ufffd" in bin_res.json()["detail"]["body"]
+
+    form_res = TestClient(app).post(
+        "/check_form",
+        content=b"other=\xff\xfe\xfd",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert form_res.status_code == 422
+    assert "errors" in form_res.json()["detail"]

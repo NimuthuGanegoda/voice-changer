@@ -109,11 +109,13 @@ class VoiceChangerV2(VoiceChangerIF):
 
     def setInputSampleRate(self, sr: int):
         self.settings.inputSampleRate = sr
-        self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
+        if self.voiceChanger is not None:
+            self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
 
     def setOutputSampleRate(self, sr: int):
         self.settings.outputSampleRate = sr
-        self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
+        if self.voiceChanger is not None:
+            self.voiceChanger.setSamplingRate(self.settings.inputSampleRate, self.settings.outputSampleRate)
 
     def get_info(self):
         data = asdict(self.settings)
@@ -354,6 +356,8 @@ class VoiceChangerV2(VoiceChangerIF):
             return np.zeros(1).astype(np.int16), [0, 0, 0]
 
     def export2onnx(self):
+        if self.voiceChanger is None:
+            return {"status": "ng", "path": ""}
         return self.voiceChanger.export2onnx()
 
         ##############

@@ -5,7 +5,7 @@ import torchaudio
 from data.ModelSlot import RVCModelSlot
 from mods.log_control import VoiceChangaerLogger
 
-from voice_changer.RVC.RVCSettings import RVCSettings
+from voice_changer.RVC.RVCSettings import RVCSettings, validate_rvc_setting
 from voice_changer.RVC.embedder.EmbedderManager import EmbedderManager
 from voice_changer.utils.VoiceChangerModel import AudioInOut, PitchfInOut, FeatureInOut, VoiceChangerModel
 from voice_changer.utils.VoiceChangerParams import VoiceChangerParams
@@ -45,7 +45,7 @@ class RVC(VoiceChangerModel):
 
         # pipelineの生成
         try:
-            self.pipeline = createPipeline(self.slotInfo, self.settings.gpu, self.settings.f0Detector)
+            self.pipeline = createPipeline(self.params, self.slotInfo, self.settings.gpu, self.settings.f0Detector)
         except PipelineCreateException as e:  # NOQA
             logger.error("[Voice Changer] pipeline create failed. check your model is valid.")
             return
@@ -58,6 +58,7 @@ class RVC(VoiceChangerModel):
 
     def update_settings(self, key: str, val: int | float | str):
         logger.info(f"[Voice Changer][RVC]: update_settings {key}:{val}")
+        validate_rvc_setting(key, val)
         if key in self.settings.intData:
             setattr(self.settings, key, int(val))
             if key == "gpu":
@@ -130,9 +131,8 @@ class RVC(VoiceChangerModel):
 
         # 出力部分だけ切り出して音量を確認。(TODO:段階的消音にする)
         cropOffset = -1 * (inputSize + crossfadeSize)
-        cropEnd = -1 * (crossfadeSize)
-        crop = self.audio_buffer[cropOffset:cropEnd]
-        rawVol = np.sqrt(np.square(crop).mean())
+        crop = self.audio_buffer[cropOffset:] if crossfadeSize == 0 else self.audio_buffer[cropOffset:-crossfadeSize]
+        rawVol = float(np.sqrt(np.square(crop).mean())) if crop.size > 0 else 0.0
         # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping.
         # rawVol is kept separately so the silence skip still triggers on real silence.
         self.rawVol = rawVol
@@ -190,16 +190,15 @@ class RVC(VoiceChangerModel):
             result = audio_out.detach().cpu().numpy() * np.sqrt(vol)
 
             return result
-        except DeviceCannotSupportHalfPrecisionException as e:  # NOQA
-            logger.warn("[Device Manager] Device cannot support half precision. Fallback to float....")
+        except DeviceCannotSupportHalfPrecisionException:
+            logger.warning("[Device Manager] Device cannot support half precision. Fallback to float....")
             self.deviceManager.setForceTensor(True)
             self.initialize()
-            # raise e
-
-        return
+            raise
 
     def __del__(self):
-        del self.pipeline
+        if hasattr(self, "pipeline"):
+            del self.pipeline
 
         # print("---------- REMOVING ---------------")
 
@@ -228,10 +227,13 @@ class RVC(VoiceChangerModel):
             del self.pipeline
             self.pipeline = None
 
-        torch.cuda.empty_cache()
-        self.initialize()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        output_file_simple = export2onnx(self.settings.gpu, modelSlot)
+        try:
+            output_file_simple = export2onnx(self.settings.gpu, modelSlot)
+        finally:
+            self.initialize()
 
         return {
             "status": "ok",

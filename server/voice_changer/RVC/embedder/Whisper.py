@@ -17,7 +17,7 @@ class Whisper(Embedder):
         self.model = whisper
         return self
 
-    def extractFeatures(self, audio: torch.Tensor) -> torch.Tensor:
+    def extractFeatures(self, audio: torch.Tensor, embOutputLayer=9, useFinalProj=True) -> torch.Tensor:
         try:
             if isinstance(audio, np.ndarray):
                 audio = torch.from_numpy(audio.astype(np.float32))

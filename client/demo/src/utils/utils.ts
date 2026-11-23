@@ -1,16 +1,19 @@
 export const trimfileName = (name: string, length: number) => {
-    const trimmedName = name.replace(/^.*[\\/]/, '')
+    const trimmedName = name.replace(/^.*[\\/]/, "");
     if (trimmedName.length > length) {
-        return trimmedName.substring(0, length) + "..."
+        return trimmedName.substring(0, length) + "...";
     } else {
-        return trimmedName
+        return trimmedName;
     }
-}
+};
 
 export const checkExtention = (filename: string, acceptExtentions: string[]) => {
-    const ext = filename.split('.').pop();
-    if (!ext) {
-        return false
+    if (!filename.includes(".")) {
+        return false;
     }
-    return acceptExtentions.includes(ext)
-}
+    const ext = filename.split(".").pop()?.toLowerCase();
+    if (!ext) {
+        return false;
+    }
+    return acceptExtentions.some((allowed) => allowed.toLowerCase() === ext);
+};

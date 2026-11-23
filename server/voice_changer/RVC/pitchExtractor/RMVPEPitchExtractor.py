@@ -28,10 +28,13 @@ class RMVPEPitchExtractor(PitchExtractor):
         real_silence_front = start_frame * hop_size / 16000  # 秒
         audio = audio[int(np.round(real_silence_front * 16000)):]
 
-        f0 = self.rmvpe.infer_from_audio_t(audio, thred=0.03)
+        f0 = np.atleast_1d(self.rmvpe.infer_from_audio_t(audio, thred=0.03))
 
         f0 = f0 * 2 ** (float(f0_up_key) / 12)
-        pitchf[-f0.shape[0]:] = f0[:pitchf.shape[0]]
+        pitchf = pitchf.copy() if isinstance(pitchf, np.ndarray) else np.asarray(pitchf, dtype=np.float32).copy()
+        n = min(f0.shape[0], pitchf.shape[0])
+        if n > 0:
+            pitchf[-n:] = f0[:n]
         f0 = pitchf
 
         f0bak = f0.copy()

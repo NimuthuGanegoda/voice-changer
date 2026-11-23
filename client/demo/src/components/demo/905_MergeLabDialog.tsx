@@ -64,8 +64,11 @@ export const MergeLabDialog = () => {
     }, [filterItems, currentFilter]);
 
     useEffect(() => {
-        if (Object.keys(filterItems).length > 0) {
-            setCurrentFilter(Object.keys(filterItems)[0]);
+        const keys = Object.keys(filterItems);
+        if (keys.length > 0) {
+            setCurrentFilter(keys[0]);
+        } else {
+            setCurrentFilter("");
         }
     }, [filterItems]);
     useEffect(() => {
@@ -115,15 +118,23 @@ export const MergeLabDialog = () => {
             setMergeElements(newMergeElements);
         };
 
-        const onMergeClicked = () => {
+        const onMergeClicked = async () => {
             const validMergeElements = mergeElements.filter((x) => {
                 return x.strength > 0;
             });
-            serverSetting.mergeModel({
-                voiceChangerType: VoiceChangerType.RVC,
-                command: "mix",
-                files: validMergeElements,
-            });
+            if (validMergeElements.length === 0) {
+                alert("Select at least one model with strength > 0 before merging.");
+                return;
+            }
+            try {
+                await serverSetting.mergeModel({
+                    voiceChangerType: VoiceChangerType.RVC,
+                    command: "mix",
+                    files: validMergeElements,
+                });
+            } catch (error) {
+                alert(error instanceof Error ? error.message : String(error));
+            }
         };
 
         const modelList = mergeElements.map((x, index) => {

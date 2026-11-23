@@ -14,34 +14,48 @@ export const RecorderArea = (_props: RecorderAreaProps) => {
         if (webEdition) {
             return <> </>;
         }
-        const onServerIORecordStartClicked = async () => {
-            setServerIORecording(true);
-            await serverSetting.updateServerSettings({ ...serverSetting.serverSetting, recordIO: 1 });
+        const applySinkId = (el: HTMLAudioElement | null, sinkId: string) => {
+            if (!el || !sinkId || sinkId === "none") {
+                return;
+            }
+            const audioEl = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+            if (typeof audioEl.setSinkId === "function") {
+                Promise.resolve(audioEl.setSinkId(sinkId)).catch((e) => {
+                    console.log(e);
+                });
+            }
         };
-        const onServerIORecordStopClicked = async () => {
-            setServerIORecording(false);
-            await serverSetting.updateServerSettings({ ...serverSetting.serverSetting, recordIO: 0 });
 
-            // set wav (input)
-            const wavInput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_INPUT) as HTMLAudioElement;
-            wavInput.src = "/tmp/in.wav?" + new Date().getTime();
-            wavInput.controls = true;
+        const onServerIORecordStartClicked = async () => {
             try {
-                // @ts-ignore
-                wavInput.setSinkId(audioOutputForAnalyzer);
+                await serverSetting.updateServerSettings({ ...serverSetting.serverSetting, recordIO: 1 });
+                setServerIORecording(true);
             } catch (e) {
                 console.log(e);
             }
-
-            // set wav (output)
-            const wavOutput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_OUTPUT) as HTMLAudioElement;
-            wavOutput.src = "/tmp/out.wav?" + new Date().getTime();
-            wavOutput.controls = true;
+        };
+        const onServerIORecordStopClicked = async () => {
             try {
-                // @ts-ignore
-                wavOutput.setSinkId(audioOutputForAnalyzer);
+                await serverSetting.updateServerSettings({ ...serverSetting.serverSetting, recordIO: 0 });
             } catch (e) {
                 console.log(e);
+            }
+            setServerIORecording(false);
+
+            // set wav (input)
+            const wavInput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_INPUT) as HTMLAudioElement | null;
+            if (wavInput) {
+                wavInput.src = "/tmp/in.wav?" + new Date().getTime();
+                wavInput.controls = true;
+                applySinkId(wavInput, audioOutputForAnalyzer);
+            }
+
+            // set wav (output)
+            const wavOutput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_OUTPUT) as HTMLAudioElement | null;
+            if (wavOutput) {
+                wavOutput.src = "/tmp/out.wav?" + new Date().getTime();
+                wavOutput.controls = true;
+                applySinkId(wavOutput, audioOutputForAnalyzer);
             }
         };
 
@@ -76,16 +90,10 @@ export const RecorderArea = (_props: RecorderAreaProps) => {
                                 value={audioOutputForAnalyzer}
                                 onChange={(e) => {
                                     setAudioOutputForAnalyzer(e.target.value);
-                                    const wavInput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_INPUT) as HTMLAudioElement;
-                                    const wavOutput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_OUTPUT) as HTMLAudioElement;
-                                    try {
-                                        //@ts-ignore
-                                        wavInput.setSinkId(e.target.value);
-                                        //@ts-ignore
-                                        wavOutput.setSinkId(e.target.value);
-                                    } catch (e) {
-                                        console.log(e);
-                                    }
+                                    const wavInput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_INPUT) as HTMLAudioElement | null;
+                                    const wavOutput = document.getElementById(AUDIO_ELEMENT_FOR_SAMPLING_OUTPUT) as HTMLAudioElement | null;
+                                    applySinkId(wavInput, e.target.value);
+                                    applySinkId(wavOutput, e.target.value);
                                 }}
                             >
                                 {outputAudioDeviceInfo
@@ -129,7 +137,7 @@ export const RecorderArea = (_props: RecorderAreaProps) => {
                 </div>
             </>
         );
-    }, [serverIORecording, audioOutputForAnalyzer, outputAudioDeviceInfo, serverSetting.updateServerSettings]);
+    }, [serverIORecording, audioOutputForAnalyzer, outputAudioDeviceInfo, serverSetting.serverSetting, serverSetting.updateServerSettings]);
 
     return <div className="config-sub-area">{serverIORecorderRow}</div>;
 };

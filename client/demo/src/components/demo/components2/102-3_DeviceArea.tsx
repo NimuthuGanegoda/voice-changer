@@ -884,7 +884,7 @@ export const DeviceArea = (_props: DeviceAreaProps) => {
                         <span className="character-area-slider-control-slider">
                             <input
                                 type="range"
-                                min="0.1"
+                                min="0.0"
                                 max="10.0"
                                 step="0.1"
                                 value={currentMonitorGain}

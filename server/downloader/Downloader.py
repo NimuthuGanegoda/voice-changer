@@ -41,7 +41,9 @@ def download_to_file(url: str, save_to: str, position: int = 0, show_progress: b
         with requests.get(url, stream=True, allow_redirects=True, timeout=TIMEOUT) as response:
             response.raise_for_status()
             length = response.headers.get("content-length")
-            total = int(length) if length and length.isdigit() else None
+            encoding = (response.headers.get("content-encoding") or "").strip().lower()
+            is_encoded = bool(encoding) and encoding != "identity"
+            total = int(length) if (not is_encoded and length and length.isdigit()) else None
             received = 0
             digest = hashlib.sha256()
             if show_progress:

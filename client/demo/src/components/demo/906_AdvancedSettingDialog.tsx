@@ -254,6 +254,6 @@ export const AdvancedSettingDialog = () => {
                 </div>
             </div>
         );
-    }, [serverSetting.serverSetting, serverSetting.updateServerSettings, setting.workletNodeSetting, setWorkletNodeSetting, setting.workletSetting, setWorkletSetting, connectionUrl, accessToken, connectionError, setServerUrl, serverSetting.reloadServerInfo]);
+    }, [serverSetting.serverSetting, serverSetting.updateServerSettings, setting.workletNodeSetting, setWorkletNodeSetting, setting.workletSetting, setWorkletSetting, setting.voiceChangerClientSetting, setVoiceChangerClientSetting, connectionUrl, accessToken, connectionError, setServerUrl, serverSetting.reloadServerInfo]);
     return dialog;
 };
