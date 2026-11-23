@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   root: ".",
   base: "./",
+  optimizeDeps: {
+    exclude: ["onnxruntime-web"],
+  },
   build: {
     outDir: "../docs",
     emptyOutDir: true,
@@ -14,10 +17,13 @@ export default defineConfig({
           if (id.includes("node_modules/react")) {
             return "vendor-react";
           }
+          if (id.includes("node_modules/onnxruntime-web")) {
+            return "vendor-ort";
+          }
           return undefined;
         },
       },
     },
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1200,
   },
 });

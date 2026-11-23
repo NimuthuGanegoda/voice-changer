@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import sys
 
-from restapi.mods.trustedorigin import TrustedOriginMiddleware
+from restapi.mods.trustedorigin import SecurityHeadersMiddleware, TrustedOriginMiddleware
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from mods.origins import compute_local_origins, normalize_origins
@@ -84,6 +84,11 @@ class MMVC_Rest:
                 allow_methods=["*"],
                 allow_headers=["*"],
             )
+            app_fastapi.add_middleware(
+                SecurityHeadersMiddleware,
+                allowed_origins=allowedOrigins,
+                port=port,
+            )
 
             for directory in (UPLOAD_DIR, TMP_DIR, voiceChangerParams.model_dir):
                 os.makedirs(directory, exist_ok=True)
@@ -105,7 +110,8 @@ class MMVC_Rest:
                 name="static",
             )
             app_fastapi.mount("/tmp", StaticFiles(directory=f"{TMP_DIR}"), name="static")
-            app_fastapi.mount("/upload_dir", StaticFiles(directory=f"{UPLOAD_DIR}"), name="static")
+            # Intentionally do NOT mount UPLOAD_DIR statically over HTTP: arbitrary uploaded
+            # files (e.g. .html/.svg) would otherwise execute same-origin in the UI.
             try:
                 app_fastapi.mount("/model_dir_static", StaticFiles(directory=f"{MODEL_DIR_STATIC}"), name="static")
             except Exception as e:

@@ -320,6 +320,32 @@ export class VCServerClient {
     return this.request<{ status: string }>("/soundboard/stop", { method: "POST" });
   }
 
+  exportSlotOnnx(): Promise<{ status?: string; path?: string; filename?: string; msg?: string }> {
+    return this.request<{ status?: string; path?: string; filename?: string; msg?: string }>(
+      "/onnx",
+      { method: "GET" },
+      300000,
+    );
+  }
+
+  async fetchServerBinary(relativePath: string): Promise<ArrayBuffer> {
+    if (!relativePath.startsWith("/") || relativePath.startsWith("//")) {
+      throw new Error("Invalid server binary path.");
+    }
+    const headers = new Headers();
+    if (this.accessToken) {
+      headers.set("Authorization", `Bearer ${this.accessToken}`);
+    }
+    const res = await fetch(`${this.baseUrl}${relativePath}`, {
+      headers,
+      signal: AbortSignal.timeout(180000),
+    });
+    if (!res.ok) {
+      throw new Error(`${relativePath}: HTTP ${res.status}`);
+    }
+    return res.arrayBuffer();
+  }
+
   async uploadChunkedFile(
     file: File,
     onProgress?: (uploadedChunks: number, totalChunks: number) => void,

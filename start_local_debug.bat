@@ -1,7 +1,7 @@
 @echo off
 rem Debug launcher - same as start_local.bat but echoes every command and never
 rem auto-opens the browser, so you can read exactly what ran and what failed.
-setlocal enabledelayedexpansion
+setlocal
 cd /d "%~dp0"
 
 echo === VoiceChanger debug launch ===
@@ -42,12 +42,9 @@ if errorlevel 1 (
 
 cd server
 
-set CMD=python MMVCServerSIO.py -p 18888 --content_vec_500 pretrain/checkpoint_best_legacy_500.pt --content_vec_500_onnx pretrain/content_vec_500.onnx --content_vec_500_onnx_on true --hubert_base pretrain/hubert_base.pt --hubert_soft pretrain/hubert/hubert-soft-0d54a1f4.pt --nsf_hifigan pretrain/nsf_hifigan/model --crepe_onnx_full pretrain/crepe_onnx_full.onnx --crepe_onnx_tiny pretrain/crepe_onnx_tiny.onnx --rmvpe pretrain/rmvpe.pt --rmvpe_onnx pretrain/rmvpe.onnx --host 127.0.0.1 --test_connect 127.0.0.1 --model_dir model_dir %*
-
-echo Command:
-echo %CMD%
+echo Launching MMVCServerSIO.py on 127.0.0.1:18888...
 echo.
-%CMD%
+python MMVCServerSIO.py -p 18888 --content_vec_500 pretrain/checkpoint_best_legacy_500.pt --content_vec_500_onnx pretrain/content_vec_500.onnx --content_vec_500_onnx_on true --hubert_base pretrain/hubert_base.pt --hubert_soft pretrain/hubert/hubert-soft-0d54a1f4.pt --nsf_hifigan pretrain/nsf_hifigan/model --crepe_onnx_full pretrain/crepe_onnx_full.onnx --crepe_onnx_tiny pretrain/crepe_onnx_tiny.onnx --rmvpe pretrain/rmvpe.pt --rmvpe_onnx pretrain/rmvpe.onnx --host 127.0.0.1 --test_connect 127.0.0.1 --model_dir model_dir %*
 
 if errorlevel 1 goto :fail
 goto :eof
