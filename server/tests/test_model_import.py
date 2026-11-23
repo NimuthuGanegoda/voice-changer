@@ -102,3 +102,46 @@ def test_unfinished_transaction_rolls_back(tmp_path):
             (tx.staging / "file").write_text("new")
             tx.commit()
     assert not (tmp_path / "0").exists()
+
+
+def test_install_model_extracts_rvc_zip_bundle(tmp_path):
+    import zipfile
+    from voice_changer.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
+
+    upload = tmp_path / "upload"
+    upload.mkdir()
+    bundle = upload / "misa_bundle.zip"
+    with zipfile.ZipFile(bundle, "w") as zf:
+        zf.writestr("Misa/Misa_e350_s1050.pth", b"misa-pth")
+        zf.writestr("Misa/added_IVF31_Flat_nprobe_1_Misa_v2.index", b"misa-index")
+
+    models = tmp_path / "models"
+    loaded_params = []
+    saved = []
+
+    def load_model(p):
+        loaded_params.append(p)
+        return SimpleNamespace(modelFile="Misa_e350_s1050.pth")
+
+    install_model(
+        models,
+        upload,
+        LoadModelParams(
+            voiceChangerType="RVC",
+            slot=1,
+            isSampleMode=False,
+            files=[LoadModelParamFile(name="Misa.zip", kind="rvcModel", dir="", uploadName="misa_bundle.zip")],
+            params={"useIndex": True},
+        ),
+        SimpleNamespace(loadModel=load_model),
+        lambda slot, info: saved.append((slot, info.modelFile)),
+    )
+
+    assert (models / "1" / "Misa_e350_s1050.pth").read_bytes() == b"misa-pth"
+    assert (models / "1" / "added_IVF31_Flat_nprobe_1_Misa_v2.index").read_bytes() == b"misa-index"
+    assert [f.name for f in loaded_params[0].files] == [
+        "Misa_e350_s1050.pth",
+        "added_IVF31_Flat_nprobe_1_Misa_v2.index",
+    ]
+    assert saved == [(1, "Misa_e350_s1050.pth")]
+    assert not bundle.exists()

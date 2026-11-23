@@ -91,7 +91,7 @@ export const SampleDownloaderScreen = (props: SampleDownloaderScreenProps) => {
                 }
                 return (
                     <div key={index} className="model-slot">
-                        <img src={x.icon} className="model-slot-icon"></img>
+                        <img src={x.icon || "assets/icons/human.png"} alt={x.name} className="model-slot-icon"></img>
                         <div className="model-slot-detail">
                             <div className="model-slot-detail-row">
                                 <div className="model-slot-detail-row-label">name:</div>

@@ -83,3 +83,87 @@ def test_sample_url_filename_strips_query_and_fragment():
     catalog = module._catalog_path("https://example/samples.json?v=1", "models")
     assert "?" not in catalog.name
     assert catalog.name.endswith("-samples.json")
+
+
+def test_rvc_archive_extracts_largest_weights_and_index_and_blocks_zip_slip(tmp_path):
+    import zipfile
+    from voice_changer.utils.RvcArchive import extract_rvc_zip
+
+    good_zip = tmp_path / "maki.zip"
+    with zipfile.ZipFile(good_zip, "w") as zf:
+        zf.writestr("__MACOSX/._Maki_e600_s2400.pth", b"junk")
+        zf.writestr("Maki/Maki_e600_s2400.pth", b"PTH" * 100)
+        zf.writestr("Maki/added_IVF30_Flat_nprobe_1_Maki_v2.index", b"IDX" * 20)
+
+    out_dir = tmp_path / "extracted"
+    out_dir.mkdir()
+    model_name, index_name = extract_rvc_zip(good_zip, out_dir)
+    assert model_name == "Maki_e600_s2400.pth"
+    assert index_name == "added_IVF30_Flat_nprobe_1_Maki_v2.index"
+    assert (out_dir / model_name).read_bytes() == b"PTH" * 100
+    assert (out_dir / index_name).read_bytes() == b"IDX" * 20
+    assert not (out_dir / "._Maki_e600_s2400.pth").exists()
+
+    bad_zip = tmp_path / "evil.zip"
+    with zipfile.ZipFile(bad_zip, "w") as zf:
+        zf.writestr("../../evil.pth", b"nope")
+    with pytest.raises(ValueError, match="path traversal"):
+        extract_rvc_zip(bad_zip, tmp_path / "out_bad")
+
+
+def test_community_samples_available_and_downloadable_from_zip(tmp_path, monkeypatch):
+    import io
+    import sys
+    import types
+    import zipfile
+    import downloader.SampleDownloader as module
+    from downloader.SampleDownloader import downloadSample, get_available_samples
+
+    def _offline_catalog(dl_params):
+        raise DownloadError("offline")
+
+    monkeypatch.setattr(module, "download_no_tqdm", _offline_catalog)
+    assert module.getSampleInfos("production", str(tmp_path), offline=False) == []
+
+    available = get_available_samples("production", str(tmp_path), offline=False)
+    ids = {sample.id for sample in available}
+    assert {
+        "ZeninMaki_RVC",
+        "MisaAmane_RVC",
+        "MikasaAckerman_RVC",
+        "HinataHyuga_RVC",
+        "Power_RVC",
+        "Makima_RVC",
+        "RaidenShogun_RVC",
+    }.issubset(ids)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("Maki/Maki_e600_s2400.pth", b"weights")
+        zf.writestr("Maki/added_IVF30_Flat_nprobe_1_Maki_v2.index", b"index")
+
+    def fake_download_no_tqdm(dl_params):
+        url, save_to = dl_params["url"], dl_params["saveTo"]
+        if url.endswith("Maki.zip"):
+            with open(save_to, "wb") as out:
+                out.write(buf.getvalue())
+            return save_to
+        raise DownloadError("catalog offline")
+
+    monkeypatch.setattr(module, "download_no_tqdm", fake_download_no_tqdm)
+    fake_gen = types.SimpleNamespace(_setInfoByPytorch=staticmethod(lambda _model_path, info: info))
+    monkeypatch.setitem(
+        sys.modules,
+        "voice_changer.RVC.RVCModelSlotGenerator",
+        types.SimpleNamespace(RVCModelSlotGenerator=fake_gen),
+    )
+
+    downloadSample("production", "ZeninMaki_RVC", str(tmp_path), 0, {"useIndex": True})
+    slot_dir = tmp_path / "0"
+    assert (slot_dir / "Maki_e600_s2400.pth").read_bytes() == b"weights"
+    assert (slot_dir / "added_IVF30_Flat_nprobe_1_Maki_v2.index").read_bytes() == b"index"
+    assert not (slot_dir / "Maki.zip").exists()
+    saved = json.loads((slot_dir / "params.json").read_text())
+    assert saved["sampleId"] == "ZeninMaki_RVC"
+    assert saved["modelFile"] == "Maki_e600_s2400.pth"
+    assert saved["indexFile"] == "added_IVF30_Flat_nprobe_1_Maki_v2.index"

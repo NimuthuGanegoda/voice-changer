@@ -5,8 +5,9 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-from voice_changer.utils.LoadModelParams import LoadModelParams
+from voice_changer.utils.LoadModelParams import LoadModelParamFile, LoadModelParams
 from voice_changer.utils.ModelPaths import ModelSlotTransaction, model_slot_path, resolve_under
+from voice_changer.utils.RvcArchive import extract_rvc_zip
 
 
 def install_model(model_dir: str | Path, upload_dir: str | Path, params: LoadModelParams, generator, save_slot: Callable):
@@ -24,10 +25,23 @@ def install_model(model_dir: str | Path, upload_dir: str | Path, params: LoadMod
     if not sources:
         raise ValueError("model import contains no files")
     with ModelSlotTransaction(model_dir, params.slot) as transaction:
-        for file, source in sources:
-            staged = resolve_under(transaction.staging, file.dir, file.name)
-            staged.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, staged)
+        zip_bundle = (
+            len(sources) == 1
+            and params.voiceChangerType == "RVC"
+            and sources[0][0].kind == "rvcModel"
+            and sources[0][0].name.lower().endswith(".zip")
+        )
+        if zip_bundle:
+            model_name, index_name = extract_rvc_zip(sources[0][1], transaction.staging)
+            extracted_files = [LoadModelParamFile(name=model_name, kind="rvcModel", dir="")]
+            if index_name:
+                extracted_files.append(LoadModelParamFile(name=index_name, kind="rvcIndex", dir=""))
+            params = params.model_copy(update={"files": extracted_files})
+        else:
+            for file, source in sources:
+                staged = resolve_under(transaction.staging, file.dir, file.name)
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, staged)
         transaction.commit()
         slot_info = generator.loadModel(params)
         save_slot(params.slot, slot_info)

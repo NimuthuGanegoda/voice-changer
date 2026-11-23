@@ -16,6 +16,7 @@ export type VoicePreset = {
   id: string;
   name: string;
   badge: string;
+  category: "character" | "studio";
   description: string;
   params: DSPParams;
 };
@@ -36,9 +37,147 @@ export const DEFAULT_DSP_PARAMS: DSPParams = {
 
 export const VOICE_PRESETS: VoicePreset[] = [
   {
+    id: "zenin-maki",
+    name: "Zenin Maki (JJK)",
+    badge: "+2.5 st",
+    category: "character",
+    description: "Assertive crisp alto timbre (pairs with ZeninMaki_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 2.5,
+      formantShift: 1.5,
+      highpassHz: 95,
+      presenceDb: 3.5,
+      gateThresholdDb: -52,
+    },
+  },
+  {
+    id: "misa-amane",
+    name: "Misa Amane (Death Note)",
+    badge: "+6.0 st",
+    category: "character",
+    description: "Sparkling Idol soprano with bright formant lift (pairs with MisaAmane_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 6.0,
+      formantShift: 4.5,
+      highpassHz: 135,
+      presenceDb: 4.5,
+      gateThresholdDb: -50,
+    },
+  },
+  {
+    id: "mikasa-ackerman",
+    name: "Mikasa Ackerman (AoT)",
+    badge: "+2.0 st",
+    category: "character",
+    description: "Composed disciplined low-alto contour (pairs with MikasaAckerman_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 2.0,
+      formantShift: 1.0,
+      highpassHz: 85,
+      presenceDb: 2.5,
+      gateThresholdDb: -53,
+    },
+  },
+  {
+    id: "hinata-hyuga",
+    name: "Hinata Hyuga (Naruto)",
+    badge: "+5.0 st",
+    category: "character",
+    description: "Gentle airy soft-spoken soprano (pairs with HinataHyuga_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 5.0,
+      formantShift: 3.5,
+      highpassHz: 120,
+      presenceDb: 2.0,
+      echoMix: 0.04,
+      gateThresholdDb: -55,
+    },
+  },
+  {
+    id: "power-csm",
+    name: "Power (Chainsaw Man)",
+    badge: "+4.0 st",
+    category: "character",
+    description: "Brash high-energy Fiend vocal edge (pairs with Power_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 4.0,
+      formantShift: 2.5,
+      highpassHz: 115,
+      presenceDb: 5.5,
+      gateThresholdDb: -50,
+    },
+  },
+  {
+    id: "makima",
+    name: "Makima (Chainsaw Man)",
+    badge: "+1.5 st",
+    category: "character",
+    description: "Poised hypnotic velvet alto control (pairs with Makima_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 1.5,
+      formantShift: 1.2,
+      highpassHz: 80,
+      presenceDb: 3.0,
+      gateThresholdDb: -54,
+    },
+  },
+  {
+    id: "raiden-shogun",
+    name: "Raiden Shogun",
+    badge: "-0.5 st",
+    category: "character",
+    description: "Commanding sovereign contralto (pairs with RaidenShogun_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: -0.5,
+      formantShift: 0.8,
+      highpassHz: 75,
+      presenceDb: 3.2,
+      echoMix: 0.08,
+      gateThresholdDb: -54,
+    },
+  },
+  {
+    id: "yae-miko",
+    name: "Yae Miko",
+    badge: "+2.5 st",
+    category: "character",
+    description: "Silky teasing Kitsune Guuji resonance (pairs with YaeMiko_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: 2.5,
+      formantShift: 2.0,
+      highpassHz: 90,
+      presenceDb: 3.8,
+      gateThresholdDb: -53,
+    },
+  },
+  {
+    id: "gojo-satoru",
+    name: "Gojo Satoru (JJK)",
+    badge: "-2.5 st",
+    category: "character",
+    description: "Relaxed charismatic tenor-baritone (pairs with GojoSatoru_RVC)",
+    params: {
+      ...DEFAULT_DSP_PARAMS,
+      semitones: -2.5,
+      formantShift: -1.8,
+      highpassHz: 70,
+      presenceDb: 2.8,
+      gateThresholdDb: -54,
+    },
+  },
+  {
     id: "natural-fem",
     name: "Soft Feminine",
     badge: "+3.5 st",
+    category: "studio",
     description: "Bright vocal lift with subtle formant scaling and warm clarity",
     params: { ...DEFAULT_DSP_PARAMS },
   },
@@ -46,6 +185,7 @@ export const VOICE_PRESETS: VoicePreset[] = [
     id: "anime-bright",
     name: "Anime / Bright",
     badge: "+5.5 st",
+    category: "studio",
     description: "Crisp high-register character voice with tightened low cut",
     params: {
       ...DEFAULT_DSP_PARAMS,
@@ -60,6 +200,7 @@ export const VOICE_PRESETS: VoicePreset[] = [
     id: "deep-baritone",
     name: "Deep Baritone",
     badge: "-4.5 st",
+    category: "studio",
     description: "Lowered chest register with darker formant tilt",
     params: {
       ...DEFAULT_DSP_PARAMS,
@@ -73,6 +214,7 @@ export const VOICE_PRESETS: VoicePreset[] = [
     id: "studio-clean",
     name: "Studio Broadcast",
     badge: "0 st",
+    category: "studio",
     description: "Natural pitch with noise gate, rumble filter, and air EQ",
     params: {
       ...DEFAULT_DSP_PARAMS,
@@ -87,6 +229,7 @@ export const VOICE_PRESETS: VoicePreset[] = [
     id: "cyber-radio",
     name: "Cyber Comms",
     badge: "-1.5 st",
+    category: "studio",
     description: "Focused tactical radio presence with subtle echo tail",
     params: {
       ...DEFAULT_DSP_PARAMS,
@@ -102,6 +245,7 @@ export const VOICE_PRESETS: VoicePreset[] = [
     id: "droid-synth",
     name: "Holo Synth",
     badge: "-3.0 st",
+    category: "studio",
     description: "Robotic carrier modulation + octave shimmer",
     params: {
       ...DEFAULT_DSP_PARAMS,
@@ -117,6 +261,7 @@ export const VOICE_PRESETS: VoicePreset[] = [
     id: "bypass",
     name: "Raw Bypass",
     badge: "Dry",
+    category: "studio",
     description: "Direct dry signal monitor for instant A/B comparison",
     params: {
       ...DEFAULT_DSP_PARAMS,

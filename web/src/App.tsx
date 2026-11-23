@@ -1,5 +1,14 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { VCServerClient, ServerInfo, ServerHealth, SoundboardStatus, VoicePresetMap, normalizeServerUrl } from "./api/vcServerClient";
+import {
+  CURATED_AI_MODELS,
+  SampleModelEntry,
+  ServerHealth,
+  ServerInfo,
+  SoundboardStatus,
+  VCServerClient,
+  VoicePresetMap,
+  normalizeServerUrl,
+} from "./api/vcServerClient";
 import { DEFAULT_DSP_PARAMS, DSPParams, VOICE_PRESETS, linearToDb } from "./audio/dspCore";
 import { AudioSourceKind, BrowserVoiceEngine, EngineMode, TelemetrySnapshot } from "./audio/voiceEngine";
 import { renderOfflineDsp } from "./audio/wavEncoder";
@@ -24,8 +33,10 @@ export default function App() {
   });
   const [mode, setMode] = useState<EngineMode>("browser");
   const [source, setSource] = useState<AudioSourceKind>("sample");
-  const [params, setParams] = useState<DSPParams>(DEFAULT_DSP_PARAMS);
-  const [activePresetId, setActivePresetId] = useState<string>("natural-fem");
+  const [params, setParams] = useState<DSPParams>(VOICE_PRESETS[0]?.params ?? DEFAULT_DSP_PARAMS);
+  const [activePresetId, setActivePresetId] = useState<string>(VOICE_PRESETS[0]?.id ?? "zenin-maki");
+  const [presetCategory, setPresetCategory] = useState<"all" | "character" | "studio">("all");
+  const [presetQuery, setPresetQuery] = useState<string>("");
 
   const [monitorEnabled, setMonitorEnabled] = useState<boolean>(true);
   const [monitorVolume, setMonitorVolume] = useState<number>(1.0);
@@ -68,6 +79,12 @@ export default function App() {
   const [soundboardFiles, setSoundboardFiles] = useState<string[]>([]);
   const [soundboardStatus, setSoundboardStatus] = useState<SoundboardStatus | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<boolean>(false);
+  const [targetSlot, setTargetSlot] = useState<number>(0);
+  const [busySampleId, setBusySampleId] = useState<string | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState<string>("");
+  const [useIndexOnInstall, setUseIndexOnInstall] = useState<boolean>(true);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [serverNote, setServerNote] = useState<string | null>(null);
 
   const engineRef = useRef<BrowserVoiceEngine | null>(null);
   const serverClientRef = useRef<VCServerClient | null>(null);
@@ -79,7 +96,7 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    const engine = new BrowserVoiceEngine(DEFAULT_DSP_PARAMS, {
+    const engine = new BrowserVoiceEngine(VOICE_PRESETS[0]?.params ?? DEFAULT_DSP_PARAMS, {
       onTelemetry: (snap) => setTelemetry(snap),
     });
     engineRef.current = engine;
@@ -265,6 +282,12 @@ export default function App() {
       setServerHealth(health);
       const info = await client.getInfo();
       setServerInfo(info);
+      const firstEmpty = (info.modelSlots ?? []).find((s) => !s.modelFile);
+      if (firstEmpty !== undefined && typeof firstEmpty.slotIndex === "number") {
+        setTargetSlot(firstEmpty.slotIndex);
+      } else if (typeof info.modelSlotIndex === "number") {
+        setTargetSlot(info.modelSlotIndex);
+      }
       try {
         const presets = await client.getPresets();
         setServerPresets(presets.presets ?? {});
@@ -294,11 +317,70 @@ export default function App() {
   const handleServerSetting = async (key: string, val: string | number | boolean) => {
     if (!serverClientRef.current) return;
     setErrorMsg(null);
+    setServerNote(null);
     try {
       const updated = await serverClientRef.current.updateSetting(key, val);
       setServerInfo(updated);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleInstallSample = async (sample: SampleModelEntry) => {
+    const client = serverClientRef.current;
+    if (!client || !serverInfo) {
+      setErrorMsg("Connect to your local VC Client server first to install neural RVC weights.");
+      return;
+    }
+    setBusySampleId(sample.id);
+    setErrorMsg(null);
+    setServerNote(`Downloading & extracting ${sample.name} into Slot #${targetSlot}...`);
+    try {
+      await client.installSampleModel({
+        slot: targetSlot,
+        sampleId: sample.id,
+        voiceChangerType: sample.voiceChangerType || "RVC",
+        useIndex: useIndexOnInstall,
+      });
+      await client.updateSetting("modelSlotIndex", targetSlot);
+      const refreshed = await client.getInfo();
+      setServerInfo(refreshed);
+      setServerNote(`Installed and activated "${sample.name}" on Slot #${targetSlot}.`);
+    } catch (err) {
+      setServerNote(null);
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusySampleId(null);
+    }
+  };
+
+  const handleUploadLocalModel = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const files = ev.target.files ? Array.from(ev.target.files) : [];
+    ev.target.value = "";
+    if (files.length === 0) return;
+    const client = serverClientRef.current;
+    if (!client || !serverInfo) {
+      setErrorMsg("Connect to your local VC Client server first to upload RVC .zip / .pth files.");
+      return;
+    }
+    setErrorMsg(null);
+    setServerNote(null);
+    setUploadProgress(`Preparing ${files.map((f) => f.name).join(" + ")}...`);
+    try {
+      await client.installLocalRvcFiles({
+        slot: targetSlot,
+        files,
+        useIndex: useIndexOnInstall,
+        onProgress: setUploadProgress,
+      });
+      await client.updateSetting("modelSlotIndex", targetSlot);
+      const refreshed = await client.getInfo();
+      setServerInfo(refreshed);
+      setServerNote(`Uploaded & loaded onto Slot #${targetSlot}.`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploadProgress("");
     }
   };
 
@@ -320,6 +402,37 @@ export default function App() {
   const activeSlots = useMemo(() => {
     return (serverInfo?.modelSlots ?? []).filter((slot) => Boolean(slot.modelFile));
   }, [serverInfo]);
+
+  const filteredPresets = useMemo(() => {
+    const q = presetQuery.trim().toLowerCase();
+    return VOICE_PRESETS.filter((preset) => {
+      if (presetCategory !== "all" && preset.category !== presetCategory) return false;
+      if (!q) return true;
+      return preset.name.toLowerCase().includes(q) || preset.description.toLowerCase().includes(q);
+    });
+  }, [presetCategory, presetQuery]);
+
+  const aiCatalog = useMemo(() => {
+    const byId = new Map<string, SampleModelEntry>();
+    for (const item of CURATED_AI_MODELS) {
+      byId.set(item.id, item);
+    }
+    for (const item of serverInfo?.sampleModels ?? []) {
+      if (item?.id) {
+        byId.set(item.id, item);
+      }
+    }
+    const q = catalogQuery.trim().toLowerCase();
+    const list = Array.from(byId.values());
+    if (!q) return list;
+    return list.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        item.id.toLowerCase().includes(q) ||
+        (item.credit ?? "").toLowerCase().includes(q) ||
+        (item.tag ?? []).some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [catalogQuery, serverInfo?.sampleModels]);
 
   return (
     <div className="studio-shell">
@@ -603,12 +716,52 @@ export default function App() {
       {mode === "browser" ? (
         <section className="panel">
           <div className="panel-head">
-            <h2>In-Browser DSP Voice Presets & Tuning</h2>
-            <span className="badge">Zero Server Required · AudioWorklet</span>
+            <h2>In-Browser DSP Sound Model Bank ({VOICE_PRESETS.length} Profiles)</h2>
+            <span className="badge">Zero Server Required · AudioWorklet DSP</span>
+          </div>
+
+          <div className="preset-toolbar">
+            <div className="source-tabs" role="tablist" aria-label="Preset category filter">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={presetCategory === "all"}
+                className={`source-pill ${presetCategory === "all" ? "active" : ""}`}
+                onClick={() => setPresetCategory("all")}
+              >
+                All ({VOICE_PRESETS.length})
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={presetCategory === "character"}
+                className={`source-pill ${presetCategory === "character" ? "active" : ""}`}
+                onClick={() => setPresetCategory("character")}
+              >
+                Character Profiles ({VOICE_PRESETS.filter((p) => p.category === "character").length})
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={presetCategory === "studio"}
+                className={`source-pill ${presetCategory === "studio" ? "active" : ""}`}
+                onClick={() => setPresetCategory("studio")}
+              >
+                Studio &amp; Synth ({VOICE_PRESETS.filter((p) => p.category === "studio").length})
+              </button>
+            </div>
+            <input
+              type="search"
+              aria-label="Filter browser voice presets"
+              className="text-input preset-search"
+              placeholder="Search Maki, Misa, Mikasa, Power..."
+              value={presetQuery}
+              onChange={(e) => setPresetQuery(e.target.value)}
+            />
           </div>
 
           <div className="preset-grid">
-            {VOICE_PRESETS.map((preset) => (
+            {filteredPresets.map((preset) => (
               <button
                 type="button"
                 key={preset.id}
@@ -962,6 +1115,131 @@ export default function App() {
               )}
             </>
           )}
+
+          <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px dashed var(--line)" }}>
+            <div className="preset-toolbar">
+              <div>
+                <h3 style={{ margin: "0 0 2px", fontSize: "0.92rem" }}>
+                  AI RVC Sound Model Catalog &amp; .zip Slot Installer
+                </h3>
+                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  Downloads verified RVC v2 checkpoints (.zip / .pth + .index) into your connected VC Client server slot.
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+                <label style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  Slot
+                  <select
+                    aria-label="Target model slot"
+                    className="select-input"
+                    style={{ width: "auto", marginLeft: "6px", padding: "5px 8px" }}
+                    value={targetSlot}
+                    onChange={(e) => setTargetSlot(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 10 }, (_, idx) => {
+                      const existing = serverInfo?.modelSlots?.find((s) => Number(s.slotIndex) === idx);
+                      const suffix = existing?.modelFile ? ` · ${existing.name || existing.modelFile}` : " · empty";
+                      return (
+                        <option key={idx} value={idx}>
+                          #{idx}
+                          {suffix}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "0.78rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={useIndexOnInstall}
+                    onChange={(e) => setUseIndexOnInstall(e.target.checked)}
+                  />
+                  Use .index
+                </label>
+
+                <label className="btn" style={{ cursor: serverInfo ? "pointer" : "not-allowed", opacity: serverInfo ? 1 : 0.55 }}>
+                  {uploadProgress || "Upload .zip / .pth + .index"}
+                  <input
+                    type="file"
+                    accept=".zip,.pth,.onnx,.index"
+                    multiple
+                    disabled={!serverInfo || Boolean(uploadProgress)}
+                    style={{ display: "none" }}
+                    onChange={(e) => void handleUploadLocalModel(e)}
+                  />
+                </label>
+
+                <input
+                  type="search"
+                  aria-label="Search RVC catalog"
+                  className="text-input"
+                  style={{ width: "210px", padding: "6px 10px" }}
+                  placeholder="Search RVC catalog..."
+                  value={catalogQuery}
+                  onChange={(e) => setCatalogQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {serverNote && (
+              <div className="badge ok" style={{ display: "inline-block", marginBottom: "10px", textTransform: "none" }}>
+                {serverNote}
+              </div>
+            )}
+
+            <div className="slots-grid">
+              {aiCatalog.map((sample) => {
+                const safeDownloadHref =
+                  sample.modelUrl && /^https?:\/\//i.test(sample.modelUrl) ? sample.modelUrl : null;
+                const safeCardHref =
+                  sample.termsOfUseUrl && /^https?:\/\//i.test(sample.termsOfUseUrl) ? sample.termsOfUseUrl : null;
+                const isBusy = busySampleId === sample.id;
+                return (
+                  <div key={sample.id} className="catalog-card">
+                    <div>
+                      <div className="preset-top">
+                        <span className="preset-name">{sample.name}</span>
+                        <span className="badge mono">{sample.voiceChangerType || "RVC"}</span>
+                      </div>
+                      <div className="preset-desc">
+                        {sample.description || "Neural voice conversion model"}
+                        {sample.credit ? ` · by ${sample.credit}` : ""}
+                      </div>
+                    </div>
+                    <div className="catalog-actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ padding: "5px 10px", fontSize: "0.78rem" }}
+                        disabled={!serverInfo || Boolean(busySampleId)}
+                        onClick={() => void handleInstallSample(sample)}
+                        title={
+                          serverInfo
+                            ? `Download & load ${sample.name} into slot #${targetSlot}`
+                            : "Connect to your VC Client server above to install"
+                        }
+                      >
+                        {isBusy ? "Installing..." : serverInfo ? `Install -> #${targetSlot}` : "Needs Server"}
+                      </button>
+                      <div style={{ display: "flex", gap: "8px", fontSize: "0.74rem" }}>
+                        {safeDownloadHref && (
+                          <a href={safeDownloadHref} target="_blank" rel="noopener noreferrer">
+                            .zip
+                          </a>
+                        )}
+                        {safeCardHref && (
+                          <a href={safeCardHref} target="_blank" rel="noopener noreferrer">
+                            HF
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </section>
       )}
 

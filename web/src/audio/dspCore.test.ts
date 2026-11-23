@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DSP_PARAMS, VoiceProcessor, float32ToInt16, int16ToFloat32, resampleFloat32 } from "./dspCore";
+import {
+  DEFAULT_DSP_PARAMS,
+  VOICE_PRESETS,
+  VoiceProcessor,
+  float32ToInt16,
+  int16ToFloat32,
+  resampleFloat32,
+} from "./dspCore";
 import { createWorkletModuleUrl } from "./workletSource";
 
 const estimateFreqHz = (samples: Float32Array, sampleRate: number): number => {
@@ -107,6 +114,33 @@ describe("VoiceProcessor DSP pitch & noise gate", () => {
       expect(seenBlob).not.toBeNull();
     } finally {
       URL.createObjectURL = origCreate;
+    }
+  });
+
+  it("exposes curated anime character DSP presets with valid finite processing", () => {
+    const ids = VOICE_PRESETS.map((p) => p.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "zenin-maki",
+        "misa-amane",
+        "mikasa-ackerman",
+        "hinata-hyuga",
+        "power-csm",
+        "makima",
+        "raiden-shogun",
+        "yae-miko",
+        "gojo-satoru",
+      ]),
+    );
+    const input = new Float32Array(2048);
+    for (let i = 0; i < input.length; i++) {
+      input[i] = 0.25 * Math.sin((2 * Math.PI * 220 * i) / sr);
+    }
+    for (const preset of VOICE_PRESETS) {
+      const proc = new VoiceProcessor(sr);
+      const output = new Float32Array(input.length);
+      proc.processBlock(input, output, preset.params);
+      expect(output.every(Number.isFinite)).toBe(true);
     }
   });
 });
