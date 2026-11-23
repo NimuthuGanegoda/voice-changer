@@ -9,10 +9,9 @@ from .rvc_models.infer_pack.models import SynthesizerTrnMs768NSFsid_nono
 
 class RVCInferencerv2Nono(Inferencer):
     def loadModel(self, file: str, gpu: int):
-        self.setProps(EnumInferenceTypes.pyTorchRVCv2Nono, file, True, gpu)
-
         dev = DeviceManager.get_instance().getDevice(gpu)
         isHalf = DeviceManager.get_instance().halfPrecisionAvailable(gpu)
+        self.setProps(EnumInferenceTypes.pyTorchRVCv2Nono, file, isHalf, gpu)
 
         cpt = load_rvc_checkpoint(file)
         model = SynthesizerTrnMs768NSFsid_nono(*cpt["config"], is_half=isHalf)

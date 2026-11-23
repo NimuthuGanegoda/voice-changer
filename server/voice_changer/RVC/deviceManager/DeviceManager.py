@@ -89,8 +89,11 @@ class DeviceManager(object):
         try:
             gpuName = torch.cuda.get_device_name(id).upper()
             if (
-                ("16" in gpuName and "V100" not in gpuName)
-                or "P40" in gpuName.upper()
+                "GTX 16" in gpuName
+                or "1630" in gpuName
+                or "1650" in gpuName
+                or "1660" in gpuName
+                or "P40" in gpuName
                 or "1070" in gpuName
                 or "1080" in gpuName
             ):

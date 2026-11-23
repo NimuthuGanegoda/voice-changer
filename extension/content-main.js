@@ -33,12 +33,13 @@
     if (d.type === "VC_CONFIG") {
       if (bridgeToken === null) bridgeToken = d.token;
       else if (d.token !== bridgeToken) return; // forged after the real handshake
-      if (state.serverUrl !== d.serverUrl) {
+      const nextEnabled = !!d.enabled;
+      if (state.serverUrl !== d.serverUrl || (state.enabled && !nextEnabled)) {
         pendingBySeq.clear();
         for (const session of activeSessions) session.reset();
       }
       state.serverUrl = d.serverUrl;
-      state.enabled = !!d.enabled;
+      state.enabled = nextEnabled;
       state.bridgeReady = true;
     } else if (d.type === "VC_AUDIO_RES") {
       if (d.token !== bridgeToken) return;
@@ -84,6 +85,9 @@
   // ---- conversion session: real mic -> server -> virtual track ----
   function createSession(realStream) {
     const ctx = new AudioContext();
+    if (ctx.state === "suspended" && typeof ctx.resume === "function") {
+      ctx.resume().catch(() => {});
+    }
     const src = ctx.createMediaStreamSource(realStream);
     const sp = ctx.createScriptProcessor(CHUNK_SIZE, 1, 1);
     const dest = ctx.createMediaStreamDestination();
@@ -109,6 +113,11 @@
     };
 
     sp.onaudioprocess = (ev) => {
+      const output = ev.outputBuffer.getChannelData(0);
+      if (!state.enabled || bridgeToken === null) {
+        output.fill(0);
+        return;
+      }
       const input = ev.inputBuffer.getChannelData(0);
       const i16 = floatToInt16(resample(input, ctx.sampleRate, SERVER_RATE));
       const now = Date.now();
@@ -122,7 +131,6 @@
       }
       window.postMessage({ __vcclient: true, token: bridgeToken, type: "VC_AUDIO_REQ", seq, buf: i16.buffer }, "*", [i16.buffer]);
 
-      const output = ev.outputBuffer.getChannelData(0);
       playBuffer.readInto(output);
     };
 
@@ -133,9 +141,14 @@
 
     // End the session when the site stops the virtual track.
     const vTrack = dest.stream.getAudioTracks()[0];
-    const origStop = vTrack.stop.bind(vTrack);
-    vTrack.stop = () => { session.stop(); origStop(); };
-    realStream.getAudioTracks()[0].addEventListener("ended", () => session.stop());
+    if (vTrack) {
+      const origStop = vTrack.stop.bind(vTrack);
+      vTrack.stop = () => { session.stop(); origStop(); };
+    }
+    const realTrack = realStream.getAudioTracks()[0];
+    if (realTrack) {
+      realTrack.addEventListener("ended", () => session.stop());
+    }
 
     return dest.stream;
   }

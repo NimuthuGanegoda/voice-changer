@@ -32,6 +32,7 @@ def export2onnx(gpu: int, modelSlot: RVCModelSlot):
     vcparams = VoiceChangerParamsManager.get_instance().params
     modelFile = os.path.join(vcparams.model_dir, str(modelSlot.slotIndex), os.path.basename(modelSlot.modelFile))
 
+    os.makedirs(TMP_DIR, exist_ok=True)
     output_file = os.path.splitext(os.path.basename(modelFile))[0] + ".onnx"
     output_file_simple = os.path.splitext(os.path.basename(modelFile))[0] + "_simple.onnx"
     output_path = os.path.join(TMP_DIR, output_file)
@@ -47,21 +48,23 @@ def export2onnx(gpu: int, modelSlot: RVCModelSlot):
         "embOutputLayer": modelSlot.embOutputLayer,
         "useFinalProj": modelSlot.useFinalProj,
     }
-    gpuMomory = DeviceManager.get_instance().getDeviceMemory(gpu)
-    print(f"[Voice Changer] exporting onnx... gpu_id:{gpu} gpu_mem:{gpuMomory}")
+    device_manager = DeviceManager.get_instance()
+    gpuMomory = device_manager.getDeviceMemory(gpu)
+    is_half = gpuMomory > 0 and device_manager.halfPrecisionAvailable(gpu)
+    print(f"[Voice Changer] exporting onnx... gpu_id:{gpu} gpu_mem:{gpuMomory} is_half:{is_half}")
 
-    if gpuMomory > 0:
-        _export2onnx(modelFile, output_path, output_path_simple, True, metadata)
+    if is_half:
+        _export2onnx(modelFile, output_path, output_path_simple, True, metadata, gpu=gpu)
     else:
         print("[Voice Changer] Warning!!! onnx export with float32. maybe size is doubled.")
-        _export2onnx(modelFile, output_path, output_path_simple, False, metadata)
+        _export2onnx(modelFile, output_path, output_path_simple, False, metadata, gpu=gpu)
     return output_file_simple
 
 
-def _export2onnx(input_model, output_model, output_model_simple, is_half, metadata):
+def _export2onnx(input_model, output_model, output_model_simple, is_half, metadata, gpu: int = 0):
     cpt = load_rvc_checkpoint(input_model)
     if is_half:
-        dev = torch.device("cuda", index=0)
+        dev = DeviceManager.get_instance().getDevice(gpu)
     else:
         dev = torch.device("cpu")
 
@@ -79,11 +82,7 @@ def _export2onnx(input_model, output_model, output_model_simple, is_half, metada
     elif metadata["modelType"] == EnumInferenceTypes.pyTorchRVCv2Nono.value:
         net_g_onnx = SynthesizerTrnMs768NSFsid_nono_ONNX(*cpt["config"])
     else:
-        print(
-            "unknwon::::: ",
-            metadata["modelType"],
-            EnumInferenceTypes.pyTorchRVCv2.value,
-        )
+        raise ValueError(f"Unsupported modelType for ONNX export: {metadata['modelType']}")
 
     net_g_onnx.eval().to(dev)
     net_g_onnx.load_state_dict(cpt["weight"], strict=False)
@@ -123,15 +122,23 @@ def _export2onnx(input_model, output_model, output_model_simple, is_half, metada
         "audio",
     ]
 
+    dynamic_axes = (
+        {
+            "feats": [1],
+            "pitch": [1],
+            "pitchf": [1],
+        }
+        if metadata["f0"] is True
+        else {
+            "feats": [1],
+        }
+    )
+
     torch.onnx.export(
         net_g_onnx,
         inputs,
         output_model,
-        dynamic_axes={
-            "feats": [1],
-            "pitch": [1],
-            "pitchf": [1],
-        },
+        dynamic_axes=dynamic_axes,
         do_constant_folding=False,
         opset_version=17,
         verbose=False,

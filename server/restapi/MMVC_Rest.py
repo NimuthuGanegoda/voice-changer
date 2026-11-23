@@ -34,7 +34,7 @@ class ValidationErrorLoggingRoute(APIRoute):
             except RequestValidationError as exc:  # type: ignore
                 print("Exception", request.url, str(exc))
                 body = await request.body()
-                detail = {"errors": exc.errors(), "body": body.decode()}
+                detail = {"errors": exc.errors(), "body": body.decode("utf-8", errors="replace")[:1024]}
                 raise HTTPException(status_code=422, detail=detail)
 
         return custom_route_handler
@@ -99,7 +99,7 @@ class MMVC_Rest:
             except Exception as e:
                 print("Locating model_dir_static failed", e)
 
-            if sys.platform.startswith("darwin"):
+            if sys.platform.startswith("darwin") and hasattr(sys, "_MEIPASS"):
                 p1 = os.path.dirname(sys._MEIPASS)
                 p2 = os.path.dirname(p1)
                 p3 = os.path.dirname(p2)

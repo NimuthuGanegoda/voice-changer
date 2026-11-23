@@ -65,9 +65,10 @@ export const DiffusionSVCSettingArea = (_props: DiffusionSVCSettingAreaProps) =>
                                 value={serverSetting.serverSetting.kStep}
                                 onChange={(e) => {
                                     const newKStep = Number(e.target.value);
-                                    const newSkipValues = getDivisors(Number(e.target.value));
+                                    const newSkipValues = getDivisors(newKStep);
                                     newSkipValues.pop();
-                                    serverSetting.updateServerSettings({ ...serverSetting.serverSetting, speedUp: Math.max(...newSkipValues), kStep: newKStep });
+                                    const nextSpeedUp = newSkipValues.length > 0 ? Math.max(...newSkipValues) : 1;
+                                    serverSetting.updateServerSettings({ ...serverSetting.serverSetting, speedUp: nextSpeedUp, kStep: newKStep });
                                 }}
                             ></input>
                         </span>
@@ -117,10 +118,10 @@ export const DiffusionSVCSettingArea = (_props: DiffusionSVCSettingAreaProps) =>
 };
 
 const getDivisors = (num: number) => {
-    var divisors = [];
-    var end = Math.sqrt(num);
+    const divisors: number[] = [];
+    const end = Math.sqrt(num);
 
-    for (var i = 1; i <= end; i++) {
+    for (let i = 1; i <= end; i++) {
         if (num % i === 0) {
             divisors.push(i);
             if (i !== num / i) {

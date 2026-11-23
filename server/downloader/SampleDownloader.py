@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from const import RVCSampleMode, getSampleJsonAndModelIds
 from data.ModelSample import ModelSamples, generateModelSample
@@ -18,9 +19,14 @@ logger = VoiceChangaerLogger.get_instance().getLogger()
 CATALOG_TTL = 24 * 60 * 60
 
 
+def _url_filename(url: str, fallback: str = "download") -> str:
+    name = Path(urlsplit(url).path).name
+    return name or fallback
+
+
 def _catalog_path(url: str, model_dir: str | None) -> Path:
     root = Path(model_dir or "model_downloads") / ".catalogs"
-    return root / f"{hashlib.sha256(url.encode()).hexdigest()[:16]}-{Path(url).name}"
+    return root / f"{hashlib.sha256(url.encode()).hexdigest()[:16]}-{_url_filename(url, 'catalog.json')}"
 
 
 def _load_catalogs(mode: RVCSampleMode, model_dir: str | None = None, offline: bool = False) -> list[ModelSamples]:
@@ -102,13 +108,13 @@ def _download_sample(samples: list[ModelSamples], sample_id: str, model_dir: str
     manager = ModelSlotManager.get_instance(model_dir)
     with ModelSlotTransaction(model_dir, slot) as transaction:
         staging = transaction.staging
-        info.modelFile = Path(sample.modelUrl).name
+        info.modelFile = _url_filename(sample.modelUrl, "model.bin")
         download_no_tqdm({"url": sample.modelUrl, "saveTo": str(staging / info.modelFile)})
         if isinstance(info, RVCModelSlot) and params.get("useIndex") and getattr(sample, "indexUrl", ""):
-            info.indexFile = Path(sample.indexUrl).name
+            info.indexFile = _url_filename(sample.indexUrl, "model.index")
             download_no_tqdm({"url": sample.indexUrl, "saveTo": str(staging / info.indexFile)})
         if getattr(sample, "icon", ""):
-            info.iconFile = Path(sample.icon).name
+            info.iconFile = _url_filename(sample.icon, "icon.png")
             download_no_tqdm({"url": sample.icon, "saveTo": str(staging / info.iconFile)})
         transaction.commit()
         target = model_slot_path(model_dir, slot)

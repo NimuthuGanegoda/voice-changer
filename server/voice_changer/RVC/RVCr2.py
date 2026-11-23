@@ -166,9 +166,8 @@ class RVCr2(VoiceChangerModel):
 
         # 出力部分だけ切り出して音量を確認。(TODO:段階的消音にする)
         cropOffset = -1 * (inputSize + crossfadeSize)
-        cropEnd = -1 * (crossfadeSize)
-        crop = self.audio_buffer[cropOffset:cropEnd]
-        rawVol = np.sqrt(np.square(crop).mean())
+        crop = self.audio_buffer[cropOffset:] if crossfadeSize == 0 else self.audio_buffer[cropOffset:-crossfadeSize]
+        rawVol = float(np.sqrt(np.square(crop).mean())) if crop.size > 0 else 0.0
         # Gradual muting: maintain 90% of previous volume if current chunk is silent to prevent popping.
         # rawVol is kept separately so the silence skip still triggers (the decayed value
         # would stay above silentThreshold for minutes and waste inference on silence).
@@ -189,6 +188,10 @@ class RVCr2(VoiceChangerModel):
         if self.pipeline is None:
             logger.info("[Voice Changer] Pipeline is not initialized.")
             raise PipelineNotInitializedException()
+
+        orig_block_frame = receivedData.shape[0]
+        orig_crossfade_frame = crossfade_frame
+        orig_sola_search_frame = sola_search_frame
 
         # 処理は16Kで実施(Pitch, embed, (infer))
         receivedData = cast(
@@ -215,7 +218,12 @@ class RVCr2(VoiceChangerModel):
         outSize = data[5]
 
         if self.rawVol < self.settings.silentThreshold:
-            return np.zeros(convertSize).astype(np.int16) * np.sqrt(vol)
+            out_sr = getattr(self, "outputSampleRate", self.slotInfo.samplingRate)
+            silent_len = max(
+                int(round(((convertSize - extra_frame) / 16000) * out_sr)),
+                orig_block_frame + orig_crossfade_frame + orig_sola_search_frame,
+            )
+            return np.zeros(silent_len, dtype=np.float32)
 
         device = self.pipeline.device
 
@@ -261,16 +269,15 @@ class RVCr2(VoiceChangerModel):
             )
 
             return result
-        except DeviceCannotSupportHalfPrecisionException as e:  # NOQA
-            logger.warn("[Device Manager] Device cannot support half precision. Fallback to float....")
+        except DeviceCannotSupportHalfPrecisionException:
+            logger.warning("[Device Manager] Device cannot support half precision. Fallback to float....")
             self.deviceManager.setForceTensor(True)
             self.initialize()
-            # raise e
-
-        return
+            raise
 
     def __del__(self):
-        del self.pipeline
+        if hasattr(self, "pipeline"):
+            del self.pipeline
 
         # print("---------- REMOVING ---------------")
 
@@ -299,10 +306,13 @@ class RVCr2(VoiceChangerModel):
             del self.pipeline
             self.pipeline = None
 
-        torch.cuda.empty_cache()
-        self.initialize()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        output_file_simple = export2onnx(self.settings.gpu, modelSlot)
+        try:
+            output_file_simple = export2onnx(self.settings.gpu, modelSlot)
+        finally:
+            self.initialize()
 
         return {
             "status": "ok",

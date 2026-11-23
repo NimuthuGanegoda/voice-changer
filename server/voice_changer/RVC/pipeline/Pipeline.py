@@ -191,23 +191,24 @@ class Pipeline(object):
                 npyOffset = math.floor(silence_front * 16000) // 360
                 npy = npy[npyOffset:]
 
-                if self.isHalf is True:
-                    npy = npy.astype("float32")
+                if npy.shape[0] > 0:
+                    if self.isHalf is True:
+                        npy = npy.astype("float32")
 
-                # TODO: kは調整できるようにする
-                k = 1
-                if k == 1:
-                    _, ix = self.index.search(npy, 1)
-                    npy = self.big_npy[ix.squeeze()]
-                else:
-                    score, ix = self.index.search(npy, k=8)
-                    weight = np.square(1 / score)
-                    weight /= weight.sum(axis=1, keepdims=True)
-                    npy = np.sum(self.big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
+                    # TODO: kは調整できるようにする
+                    k = 1
+                    if k == 1:
+                        _, ix = self.index.search(npy, 1)
+                        npy = self.big_npy[ix[:, 0]]
+                    else:
+                        score, ix = self.index.search(npy, k=8)
+                        weight = np.square(1 / score)
+                        weight /= weight.sum(axis=1, keepdims=True)
+                        npy = np.sum(self.big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
 
-                # recover silient font
-                npy = np.concatenate([np.zeros([npyOffset, npy.shape[1]], dtype=np.float32), feature[:npyOffset:2].astype("float32"), npy])[-feats.shape[1]:]
-                feats = torch.from_numpy(npy).unsqueeze(0).to(self.device) * index_rate + (1 - index_rate) * feats
+                    # recover silient font
+                    npy = np.concatenate([np.zeros([npyOffset, npy.shape[1]], dtype=np.float32), feature[:npyOffset:2].astype("float32"), npy])[-feats.shape[1]:]
+                    feats = torch.from_numpy(npy).unsqueeze(0).to(self.device) * index_rate + (1 - index_rate) * feats
             feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
             if protect < 0.5 and search_index:
                 feats0 = feats.clone()
@@ -229,14 +230,13 @@ class Pipeline(object):
             # pitchの推定が上手くいかない(pitchf=0)場合、検索前の特徴を混ぜる
             # pitchffの作り方の疑問はあるが、本家通りなので、このまま使うことにする。
             # https://github.com/w-okada/voice-changer/pull/276#issuecomment-1571336929
-            if protect < 0.5 and search_index:
+            if protect < 0.5 and search_index and pitchf is not None:
                 pitchff = pitchf.clone()
                 pitchff[pitchf > 0] = 1
                 pitchff[pitchf < 1] = protect
                 pitchff = pitchff.unsqueeze(-1)
                 feats = feats * pitchff + feats0 * (1 - pitchff)
                 feats = feats.to(feats0.dtype)
-            p_len = torch.tensor([p_len], device=self.device).long()
 
             # apply silent front for inference
             if type(self.inferencer) in [OnnxRVCInferencer, OnnxRVCInferencerNono]:
@@ -277,7 +277,6 @@ class Pipeline(object):
         return audio1, pitchf_buffer, feats_buffer
 
     def __del__(self):
-        del self.embedder
-        del self.inferencer
-        del self.pitchExtractor
-        print('Pipeline has been deleted')
+        for attr in ("embedder", "inferencer", "pitchExtractor"):
+            if hasattr(self, attr):
+                delattr(self, attr)
