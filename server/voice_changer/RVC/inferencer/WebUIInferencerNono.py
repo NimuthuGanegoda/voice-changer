@@ -9,10 +9,9 @@ from .models import SynthesizerTrnMsNSFsidNono
 
 class WebUIInferencerNono(Inferencer):
     def loadModel(self, file: str, gpu: int):
-        self.setProps(EnumInferenceTypes.pyTorchWebUINono, file, True, gpu)
-
         dev = DeviceManager.get_instance().getDevice(gpu)
         isHalf = DeviceManager.get_instance().halfPrecisionAvailable(gpu)
+        self.setProps(EnumInferenceTypes.pyTorchWebUINono, file, isHalf, gpu)
 
         cpt = load_rvc_checkpoint(file)
         model = SynthesizerTrnMsNSFsidNono(**cpt["params"], is_half=isHalf)

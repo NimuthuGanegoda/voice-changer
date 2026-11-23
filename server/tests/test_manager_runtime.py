@@ -348,3 +348,9 @@ def test_rmvpe_onnx_short_audio_and_empty_f0_and_nono_v22():
     nono.model = SimpleNamespace(run=lambda _out, _inp: [np.array([0.1, -0.2], dtype=np.float32)])
     out = nono.infer(torch.zeros((1, 2, 768)), torch.tensor([2]), None, None, torch.tensor([0]), None)
     assert out.shape == (2,)
+
+    # 4) Whisper.extractFeatures must accept Pipeline's 3-argument call signature.
+    import inspect
+    from voice_changer.RVC.embedder.Whisper import Whisper
+    sig = inspect.signature(Whisper.extractFeatures)
+    sig.bind(Whisper(), torch.zeros(160), 9, True)
