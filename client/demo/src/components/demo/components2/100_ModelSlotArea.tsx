@@ -6,7 +6,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 export type ModelSlotAreaProps = {};
 
-export type SortTypes = "slot" | "name";
+export const SortTypes = {
+    slot: "slot",
+    name: "name",
+} as const;
+export type SortTypes = (typeof SortTypes)[keyof typeof SortTypes];
 
 export const ModelSlotArea = (_props: ModelSlotAreaProps) => {
     const { serverSetting, getInfo, webEdition } = useAppState();

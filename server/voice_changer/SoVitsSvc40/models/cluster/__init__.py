@@ -1,9 +1,10 @@
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 def get_cluster_model(ckpt_path):
-    checkpoint = torch.load(ckpt_path)
+    checkpoint = load_rvc_checkpoint(ckpt_path, map_location="cpu")
     kmeans_dict = {}
     for spk, ckpt in checkpoint.items():
         km = KMeans(ckpt["n_features_in_"])

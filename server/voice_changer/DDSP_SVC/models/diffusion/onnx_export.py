@@ -36,7 +36,8 @@ def load_model_vocoder(
                 args.model.n_hidden)
     
     print(' [Loading] ' + model_path)
-    ckpt = torch.load(model_path, map_location=torch.device(device))
+    from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
+    ckpt = load_rvc_checkpoint(model_path, map_location=torch.device(device))
     model.to(device)
     model.load_state_dict(ckpt['model'])
     model.eval()

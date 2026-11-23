@@ -31,6 +31,6 @@ module.exports = merge(common, {
             logging: "log",
         },
         host: "0.0.0.0",
-        https: true,
+        server: "https",
     },
 });

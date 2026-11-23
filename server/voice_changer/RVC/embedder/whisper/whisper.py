@@ -9,6 +9,7 @@ import torch
 # import numpy as np
 # from easy_vc_dev.utils.whisper.audio import load_audio, pad_or_trim
 from .model import ModelDimensions, Whisper
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 # import onnx
 
@@ -20,7 +21,7 @@ from .model import ModelDimensions, Whisper
 
 def load_model(path) -> Whisper:
     device = "cpu"
-    checkpoint = torch.load(path, map_location=device)
+    checkpoint = load_rvc_checkpoint(path, map_location=device)
     dims = ModelDimensions(**checkpoint["dims"])
     model = Whisper(dims)
     model.load_state_dict(checkpoint["model_state_dict"])

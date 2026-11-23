@@ -6,6 +6,7 @@ import numpy as np
 from .diffusion import GaussianDiffusion
 from .wavenet import WaveNet
 from .vocoder import Vocoder
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 
 class DotDict(dict):
@@ -30,7 +31,7 @@ def load_model_vocoder(model_path, device="cpu"):
     model = Unit2Mel(args.data.encoder_out_channels, args.model.n_spk, args.model.use_pitch_aug, vocoder.dimension, args.model.n_layers, args.model.n_chans, args.model.n_hidden)
 
     print(" [Loading] " + model_path)
-    ckpt = torch.load(model_path, map_location=torch.device(device))
+    ckpt = load_rvc_checkpoint(model_path, map_location=torch.device(device))
     model.to(device)
     model.load_state_dict(ckpt["model"])
     model.eval()

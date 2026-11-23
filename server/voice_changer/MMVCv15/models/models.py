@@ -429,7 +429,8 @@ class SynthesizerTrn(nn.Module):
         torch.save({"enc_q": enc_q, "dec": dec, "emb_g": emb_g}, path)
 
     def load_synthesizer(self, path):
-        dict = torch.load(path, map_location="cpu")
+        from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
+        dict = load_rvc_checkpoint(path, map_location="cpu")
         enc_q = dict["enc_q"]
         dec = dict["dec"]
         emb_g = dict["emb_g"]

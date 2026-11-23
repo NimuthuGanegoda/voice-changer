@@ -36,7 +36,8 @@ def export2onnx(gpu: int, modelSlot: DiffusionSVCModelSlot):
 
 
 def _export2onnx(input_model, output_model, output_model_simple, is_half, metadata):
-    cpt = torch.load(input_model, map_location="cpu")
+    from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
+    cpt = load_rvc_checkpoint(input_model, map_location="cpu")
     if is_half:
         dev = torch.device("cuda", index=0)
     else:

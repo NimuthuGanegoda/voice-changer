@@ -13,7 +13,8 @@ class TorchCrepe2(torch.nn.Module):
         super().__init__()
         self.crepe = Crepe(model)
         file = os.path.join(os.path.dirname(__file__), f'{model}.pth')
-        self.crepe.load_state_dict(torch.load(file, map_location="cpu"))
+        from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
+        self.crepe.load_state_dict(load_rvc_checkpoint(file, map_location="cpu"))
         self.crepe = self.crepe.to(torch.device("cpu"))
         self.crepe.eval()
 

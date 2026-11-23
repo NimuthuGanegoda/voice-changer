@@ -7,6 +7,7 @@ from voice_changer.DiffusionSVC.inferencer.diffusion_svc_model.diffusion.diffusi
 from voice_changer.DiffusionSVC.inferencer.diffusion_svc_model.diffusion.wavenet import WaveNet
 from voice_changer.DiffusionSVC.inferencer.diffusion_svc_model.diffusion.vocoder import Vocoder
 from voice_changer.DiffusionSVC.inferencer.diffusion_svc_model.diffusion.naive.naive import Unit2MelNaive
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 
 class DotDict(dict):
@@ -37,7 +38,7 @@ def load_model_vocoder(
     model = load_svc_model(args=args, vocoder_dimension=vocoder.dimension)
 
     print(' [Loading] ' + model_path)
-    ckpt = torch.load(model_path, map_location=torch.device(device))
+    ckpt = load_rvc_checkpoint(model_path, map_location=torch.device(device))
     model.to(device)
     model.load_state_dict(ckpt['model'])
     model.eval()
@@ -45,7 +46,7 @@ def load_model_vocoder(
 
 
 def load_model_vocoder_from_combo(combo_model_path, device='cpu'):
-    read_dict = torch.load(combo_model_path, map_location=torch.device(device))
+    read_dict = load_rvc_checkpoint(combo_model_path, map_location=torch.device(device))
     # args
     diff_args = DotDict(read_dict["diff_config_dict"])
     naive_args = DotDict(read_dict["naive_config_dict"])

@@ -17,7 +17,7 @@ def train_cluster(in_dir, n_clusters, use_minibatch=True, verbose=False):
     features = []
     nums = 0
     for path in tqdm.tqdm(in_dir.glob("*.soft.pt")):
-        features.append(torch.load(path).squeeze(0).numpy().T)
+        features.append(torch.load(path, map_location="cpu", weights_only=True).squeeze(0).numpy().T)
         # print(features[-1].shape)
     features = np.concatenate(features, axis=0)
     print(nums, features.nbytes / 1024**2, "MB , shape:", features.shape, features.dtype)

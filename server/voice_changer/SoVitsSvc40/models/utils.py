@@ -12,6 +12,7 @@ import functools
 import numpy as np
 from scipy.io.wavfile import read
 import torch
+from voice_changer.utils.TrustedCheckpoint import load_rvc_checkpoint
 
 MATPLOTLIB_FLAG = False
 
@@ -254,7 +255,7 @@ def get_content(cmodel, y):
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, skip_optimizer=False):
     assert os.path.isfile(checkpoint_path)
-    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint_dict = load_rvc_checkpoint(checkpoint_path, map_location="cpu")
     iteration = checkpoint_dict["iteration"]
     learning_rate = checkpoint_dict["learning_rate"]
     if optimizer is not None and not skip_optimizer and checkpoint_dict["optimizer"] is not None:
@@ -303,7 +304,7 @@ def clean_checkpoints(path_to_models="logs/44k/", n_ckpts_to_keep=2, sort_by_tim
                           False -> lexicographically delete ckpts
     """
     ckpts_files = [f for f in os.listdir(path_to_models) if os.path.isfile(os.path.join(path_to_models, f))]
-    name_key = lambda _f: int(re.compile("._(\d+)\.pth").match(_f).group(1))  # NOQA
+    name_key = lambda _f: int(re.compile(r"._(\d+)\.pth").match(_f).group(1))  # NOQA
     time_key = lambda _f: os.path.getmtime(os.path.join(path_to_models, _f))  # NOQA
     sort_key = time_key if sort_by_time else name_key
     x_sorted = lambda _x: sorted([f for f in ckpts_files if f.startswith(_x) and not f.endswith("_0.pth")], key=sort_key)  # NOQA

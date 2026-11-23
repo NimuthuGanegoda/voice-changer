@@ -33,8 +33,20 @@ class ValidationErrorLoggingRoute(APIRoute):
                 return await original_route_handler(request)
             except RequestValidationError as exc:  # type: ignore
                 print("Exception", request.url, str(exc))
-                body = await request.body()
-                detail = {"errors": exc.errors(), "body": body.decode("utf-8", errors="replace")[:1024]}
+                from fastapi.encoders import jsonable_encoder
+                try:
+                    body = await request.body()
+                    body_text = body[:1024].decode("utf-8", errors="replace")
+                except RuntimeError:
+                    exc_body = getattr(exc, "body", None)
+                    body_text = str(exc_body)[:1024] if exc_body is not None else ""
+                detail = {
+                    "errors": jsonable_encoder(
+                        exc.errors(),
+                        custom_encoder={bytes: lambda value: value[:1024].decode("utf-8", errors="replace")},
+                    ),
+                    "body": body_text,
+                }
                 raise HTTPException(status_code=422, detail=detail)
 
         return custom_route_handler
