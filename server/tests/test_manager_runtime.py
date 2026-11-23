@@ -354,3 +354,21 @@ def test_rmvpe_onnx_short_audio_and_empty_f0_and_nono_v22():
     from voice_changer.RVC.embedder.Whisper import Whisper
     sig = inspect.signature(Whisper.extractFeatures)
     sig.bind(Whisper(), torch.zeros(160), 9, True)
+
+    # 5) OnnxContentvec executes units9/unit12 cleanly and matches both hubert_base & contentvec.
+    from voice_changer.RVC.embedder.OnnxContentvec import OnnxContentvec
+    cv = OnnxContentvec()
+    cv.setProps("contentvec", "contentvec-f.onnx", torch.device("cpu"), False)
+    assert cv.matchCondition("hubert_base")
+    assert cv.matchCondition("contentvec")
+    cv.output_names = {"units9", "unit12"}
+    calls = []
+    def fake_run(outputs, feed):
+        calls.append((outputs, feed["audio"].shape))
+        dim = 256 if outputs == ["units9"] else 768
+        return [np.zeros((1, 10, dim), dtype=np.float32)]
+    cv.model = SimpleNamespace(run=fake_run)
+    assert cv.extractFeatures(torch.zeros((1, 3200)), 9, True).shape == (1, 10, 256)
+    assert cv.extractFeatures(torch.zeros((1, 3200)), 12, False).shape == (1, 10, 768)
+    assert calls[0][0] == ["units9"]
+    assert calls[1][0] == ["unit12"]

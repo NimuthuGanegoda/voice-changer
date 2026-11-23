@@ -1,7 +1,9 @@
 import hashlib
+import ipaddress
 import os
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from tqdm import tqdm
@@ -16,6 +18,27 @@ class DownloadError(RuntimeError):
     pass
 
 
+def validate_remote_url(url: str) -> str:
+    """Reject non-HTTPS schemes and loopback/private/link-local targets (SSRF defense)."""
+    if not isinstance(url, str) or not url.strip():
+        raise DownloadError("download URL must not be empty")
+    parsed = urlsplit(url.strip())
+    scheme = parsed.scheme.lower()
+    if scheme != "https":
+        if not (scheme == "http" and os.getenv("VCCLIENT_ALLOW_INSECURE_DOWNLOADS") == "1"):
+            raise DownloadError(f"refusing insecure download scheme {scheme!r}: {url}")
+    host = (parsed.hostname or "").strip().lower()
+    if not host or host in ("localhost", "localhost.localdomain") or host.endswith((".local", ".internal")):
+        raise DownloadError(f"refusing local/internal download host {host!r}")
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        ip = None
+    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast):
+        raise DownloadError(f"refusing non-public IP download target {host!r}")
+    return url.strip()
+
+
 def sha256_file(path: str | Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as source:
@@ -26,6 +49,7 @@ def sha256_file(path: str | Path) -> str:
 
 def download_to_file(url: str, save_to: str, position: int = 0, show_progress: bool = True, sha256: str | None = None) -> str:
     """Download to a sibling temporary file; never publish partial/corrupt data."""
+    url = validate_remote_url(url)
     target = Path(save_to)
     target.parent.mkdir(parents=True, exist_ok=True)
     if sha256:
@@ -40,6 +64,8 @@ def download_to_file(url: str, save_to: str, position: int = 0, show_progress: b
     try:
         with requests.get(url, stream=True, allow_redirects=True, timeout=TIMEOUT) as response:
             response.raise_for_status()
+            if getattr(response, "url", None):
+                validate_remote_url(str(response.url))
             length = response.headers.get("content-length")
             encoding = (response.headers.get("content-encoding") or "").strip().lower()
             is_encoded = bool(encoding) and encoding != "identity"

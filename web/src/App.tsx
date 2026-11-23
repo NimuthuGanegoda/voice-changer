@@ -10,8 +10,23 @@ import {
   normalizeServerUrl,
 } from "./api/vcServerClient";
 import { DEFAULT_DSP_PARAMS, DSPParams, VOICE_PRESETS, linearToDb } from "./audio/dspCore";
-import { AudioSourceKind, BrowserVoiceEngine, EngineMode, TelemetrySnapshot } from "./audio/voiceEngine";
-import { renderOfflineDsp } from "./audio/wavEncoder";
+import {
+  BROWSER_ONNX_MODELS,
+  BrowserOnnxRvcEngine,
+  CONTENTVEC_ONNX_URL,
+  CREPE_TINY_ONNX_URL,
+  OnnxVoiceModel,
+  PitchMethod,
+} from "./audio/onnxRvcEngine";
+import {
+  AudioSourceKind,
+  BrowserVoiceEngine,
+  EngineMode,
+  TelemetrySnapshot,
+  convertBufferViaServer,
+  extractMonoFloat32,
+} from "./audio/voiceEngine";
+import { encodeWav, renderOfflineDsp } from "./audio/wavEncoder";
 import { Oscilloscope } from "./components/Oscilloscope";
 
 type Theme = "dark" | "light";
@@ -31,11 +46,10 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(() => {
     return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
   });
-  const [mode, setMode] = useState<EngineMode>("browser");
-  const [source, setSource] = useState<AudioSourceKind>("sample");
+  const [mode, setMode] = useState<EngineMode>("onnx");
+  const [source, setSource] = useState<AudioSourceKind>("file");
   const [params, setParams] = useState<DSPParams>(VOICE_PRESETS[0]?.params ?? DEFAULT_DSP_PARAMS);
-  const [activePresetId, setActivePresetId] = useState<string>(VOICE_PRESETS[0]?.id ?? "zenin-maki");
-  const [presetCategory, setPresetCategory] = useState<"all" | "character" | "studio">("all");
+  const [activePresetId, setActivePresetId] = useState<string>(VOICE_PRESETS[0]?.id ?? "natural-fem");
   const [presetQuery, setPresetQuery] = useState<string>("");
 
   const [monitorEnabled, setMonitorEnabled] = useState<boolean>(true);
@@ -85,8 +99,30 @@ export default function App() {
   const [useIndexOnInstall, setUseIndexOnInstall] = useState<boolean>(true);
   const [uploadProgress, setUploadProgress] = useState<string>("");
   const [serverNote, setServerNote] = useState<string | null>(null);
+  const [serverConvertBusy, setServerConvertBusy] = useState<boolean>(false);
+  const [exportingOnnx, setExportingOnnx] = useState<boolean>(false);
+
+  // Browser Neural ONNX RVC State
+  const [selectedOnnxId, setSelectedOnnxId] = useState<string>(BROWSER_ONNX_MODELS[0]?.id ?? "Tsukuyomi-chan_o");
+  const [onnxCustomName, setOnnxCustomName] = useState<string>("");
+  const [contentVecReady, setContentVecReady] = useState<boolean>(false);
+  const [onnxVoiceReady, setOnnxVoiceReady] = useState<boolean>(false);
+  const [crepeReady, setCrepeReady] = useState<boolean>(false);
+  const [onnxPitchMethod, setOnnxPitchMethod] = useState<PitchMethod>("yin");
+  const [onnxTune, setOnnxTune] = useState<number>(10);
+  const [onnxStatus, setOnnxStatus] = useState<string>(
+    "Select a voice and click Convert Voice — ContentVec encoder downloads once (~378 MB) and caches in your browser.",
+  );
+  const [onnxBusy, setOnnxBusy] = useState<boolean>(false);
+  const [onnxResultUrl, setOnnxResultUrl] = useState<string | null>(null);
+  const [onnxMicRecording, setOnnxMicRecording] = useState<boolean>(false);
 
   const engineRef = useRef<BrowserVoiceEngine | null>(null);
+  const onnxEngineRef = useRef<BrowserOnnxRvcEngine | null>(null);
+  const onnxResultUrlRef = useRef<string | null>(null);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<BlobPart[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
   const serverClientRef = useRef<VCServerClient | null>(null);
   const recordedUrlRef = useRef<string | null>(null);
   const exportedUrlRef = useRef<string | null>(null);
@@ -100,9 +136,14 @@ export default function App() {
       onTelemetry: (snap) => setTelemetry(snap),
     });
     engineRef.current = engine;
+    onnxEngineRef.current = new BrowserOnnxRvcEngine();
     return () => {
       if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current);
       if (exportedUrlRef.current) URL.revokeObjectURL(exportedUrlRef.current);
+      if (onnxResultUrlRef.current) URL.revokeObjectURL(onnxResultUrlRef.current);
+      if (mediaStreamRef.current) {
+        for (const t of mediaStreamRef.current.getTracks()) t.stop();
+      }
       void engine.dispose();
     };
   }, []);
@@ -253,6 +294,201 @@ export default function App() {
     }
   };
 
+  const handleLoadLocalOnnxEncoder = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!file || !onnxEngineRef.current) return;
+    setOnnxBusy(true);
+    setErrorMsg(null);
+    setOnnxStatus(`Loading ContentVec encoder from ${file.name}...`);
+    try {
+      const bytes = await file.arrayBuffer();
+      await onnxEngineRef.current.ensureContentVec(bytes);
+      setContentVecReady(true);
+      setOnnxStatus(`ContentVec encoder loaded from ${file.name}.`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOnnxBusy(false);
+    }
+  };
+
+  const handleLoadLocalOnnxVoice = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!file || !onnxEngineRef.current) return;
+    setOnnxBusy(true);
+    setErrorMsg(null);
+    setOnnxStatus(`Loading custom ONNX voice ${file.name}...`);
+    try {
+      const bytes = await file.arrayBuffer();
+      const meta = await onnxEngineRef.current.ensureRvcModel(`local:${file.name}`, bytes);
+      setOnnxVoiceReady(true);
+      setOnnxCustomName(file.name);
+      setOnnxStatus(`Loaded "${file.name}" (${meta.sampleRate} Hz, ${meta.embChannels} ch) — ready for in-browser inference.`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOnnxBusy(false);
+    }
+  };
+
+  const handleOnnxMicToggle = async () => {
+    if (onnxMicRecording) {
+      mediaRecRef.current?.stop();
+      setOnnxMicRecording(false);
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setErrorMsg("Browser microphone recording is unavailable here; upload a WAV/MP3 speech file below.");
+      return;
+    }
+    setErrorMsg(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      mediaStreamRef.current = stream;
+      mediaChunksRef.current = [];
+      const rec = new MediaRecorder(stream);
+      mediaRecRef.current = rec;
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
+      };
+      rec.onstop = () => {
+        for (const t of stream.getTracks()) t.stop();
+        mediaStreamRef.current = null;
+        const blob = new Blob(mediaChunksRef.current, { type: rec.mimeType || "audio/webm" });
+        const file = new File([blob], "mic-phrase.webm", { type: blob.type });
+        void engineRef.current?.decodeUploadedFile(file).then(({ duration }) => {
+          setUploadedName("Recorded Mic Speech");
+          setUploadedDuration(duration);
+          setOnnxStatus(`Captured ${duration.toFixed(1)}s mic speech — click Convert Voice with Neural ONNX.`);
+        });
+      };
+      rec.start();
+      setOnnxMicRecording(true);
+      setOnnxStatus("Recording microphone... click Stop Recording when done.");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleRunOnnxConvert = async () => {
+    const onnxEngine = onnxEngineRef.current;
+    const buf = engineRef.current?.getUploadedBuffer();
+    if (!onnxEngine) return;
+    if (!buf) {
+      setErrorMsg("Record your mic or upload a voice audio file (.wav/.mp3/.m4a) first.");
+      return;
+    }
+    setOnnxBusy(true);
+    setErrorMsg(null);
+    try {
+      if (!onnxEngine.hasContentVec()) {
+        setOnnxStatus("Downloading & caching ContentVec ONNX (~378 MB, one-time)...");
+        await onnxEngine.ensureContentVec(CONTENTVEC_ONNX_URL, (loaded, total) => {
+          const mb = (loaded / (1024 * 1024)).toFixed(1);
+          const tot = total ? `${(total / (1024 * 1024)).toFixed(0)} MB` : "? MB";
+          setOnnxStatus(`Downloading ContentVec ONNX: ${mb} / ${tot} (cached once)...`);
+        });
+        setContentVecReady(true);
+      }
+
+      if (onnxPitchMethod === "crepe" && !crepeReady) {
+        setOnnxStatus("Downloading CREPE-tiny pitch model (~2 MB)...");
+        await onnxEngine.ensureCrepe(CREPE_TINY_ONNX_URL);
+        setCrepeReady(true);
+      }
+
+      if (!onnxCustomName) {
+        const chosen: OnnxVoiceModel =
+          BROWSER_ONNX_MODELS.find((m) => m.id === selectedOnnxId) ?? BROWSER_ONNX_MODELS[0]!;
+        setOnnxStatus(`Loading neural RVC voice ${chosen.name}...`);
+        await onnxEngine.ensureRvcModel(chosen.id, chosen.modelUrl, chosen.sampleRate, (loaded, total) => {
+          const mb = (loaded / (1024 * 1024)).toFixed(1);
+          const tot = total ? `${(total / (1024 * 1024)).toFixed(0)} MB` : "~55 MB";
+          setOnnxStatus(`Loading ${chosen.name}: ${mb} / ${tot}...`);
+        });
+        setOnnxVoiceReady(true);
+      }
+
+      const mono = extractMonoFloat32(buf);
+      const { audio, sampleRate } = await onnxEngine.convertMonoAudio(mono, buf.sampleRate, {
+        transposeSemitones: onnxTune,
+        pitchMethod: onnxPitchMethod,
+        onStage: (msg) => setOnnxStatus(msg),
+      });
+      const wavBlob = encodeWav(audio, sampleRate);
+      if (onnxResultUrlRef.current) URL.revokeObjectURL(onnxResultUrlRef.current);
+      const url = URL.createObjectURL(wavBlob);
+      onnxResultUrlRef.current = url;
+      setOnnxResultUrl(url);
+      setOnnxStatus(`Conversion complete (${sampleRate} Hz neural ONNX output).`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOnnxBusy(false);
+    }
+  };
+
+  const handleServerConvertFile = async () => {
+    const client = serverClientRef.current;
+    const buf = engineRef.current?.getUploadedBuffer();
+    if (!client || !serverInfo) {
+      setErrorMsg("Connect to your VC Client server first.");
+      return;
+    }
+    if (!buf) {
+      setErrorMsg("Upload or record an audio file first.");
+      return;
+    }
+    setServerConvertBusy(true);
+    setErrorMsg(null);
+    setServerNote("Converting full file cleanly via local AI server (no live frame drops)...");
+    try {
+      const mono = extractMonoFloat32(buf);
+      const wav = await convertBufferViaServer(mono, buf.sampleRate, (pcm) => client.convertVoicePcm16(pcm), (done, total) => {
+        setServerNote(`Server neural RVC progress: block ${done}/${total}...`);
+      });
+      if (exportedUrlRef.current) URL.revokeObjectURL(exportedUrlRef.current);
+      const url = URL.createObjectURL(wav);
+      exportedUrlRef.current = url;
+      setExportedFileUrl(url);
+      setServerNote("Server neural conversion complete — play or download below.");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setServerConvertBusy(false);
+    }
+  };
+
+  const handleExportSlotToBrowserOnnx = async () => {
+    const client = serverClientRef.current;
+    if (!client || !serverInfo) return;
+    setExportingOnnx(true);
+    setErrorMsg(null);
+    setServerNote("Exporting active PyTorch RVC slot -> simplified ONNX (can take 15-45s)...");
+    try {
+      const res = await client.exportSlotOnnx();
+      if (res.status !== "ok" || !res.path) {
+        throw new Error(res.msg || "Slot could not be exported to ONNX (slot must be a PyTorch RVC v1/v2 checkpoint).");
+      }
+      setServerNote(`Fetching exported ${res.filename || "model.onnx"} into Browser Neural Engine...`);
+      const bytes = await client.fetchServerBinary(res.path);
+      const name = res.filename || "exported-rvc.onnx";
+      if (onnxEngineRef.current) {
+        await onnxEngineRef.current.ensureRvcModel(`server:${name}`, bytes);
+        setOnnxVoiceReady(true);
+        setOnnxCustomName(name);
+      }
+      setMode("onnx");
+      setOnnxStatus(`Imported "${name}" directly from your server into Browser Neural (ONNX)!`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportingOnnx(false);
+    }
+  };
+
   const handleToggleRecord = () => {
     const engine = engineRef.current;
     if (!engine || !telemetry.running) return;
@@ -388,6 +624,13 @@ export default function App() {
     const origin = typeof window !== "undefined" && window.location.origin.startsWith("http")
       ? window.location.origin
       : "https://nimuthuganegoda.github.io";
+    return `start_local.bat --allowed-origins ${origin}`;
+  }, []);
+
+  const linuxCorsOriginCommand = useMemo(() => {
+    const origin = typeof window !== "undefined" && window.location.origin.startsWith("http")
+      ? window.location.origin
+      : "https://nimuthuganegoda.github.io";
     return `bash start_local.sh --allowed-origins ${origin}`;
   }, []);
 
@@ -405,12 +648,11 @@ export default function App() {
 
   const filteredPresets = useMemo(() => {
     const q = presetQuery.trim().toLowerCase();
-    return VOICE_PRESETS.filter((preset) => {
-      if (presetCategory !== "all" && preset.category !== presetCategory) return false;
-      if (!q) return true;
-      return preset.name.toLowerCase().includes(q) || preset.description.toLowerCase().includes(q);
-    });
-  }, [presetCategory, presetQuery]);
+    if (!q) return VOICE_PRESETS;
+    return VOICE_PRESETS.filter(
+      (preset) => preset.name.toLowerCase().includes(q) || preset.description.toLowerCase().includes(q),
+    );
+  }, [presetQuery]);
 
   const aiCatalog = useMemo(() => {
     const byId = new Map<string, SampleModelEntry>();
@@ -447,6 +689,21 @@ export default function App() {
 
         <div className="topbar-actions">
           <div className="mode-switch" role="tablist" aria-label="Voice processing engine mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "onnx"}
+              className={`mode-tab ${mode === "onnx" ? "active" : ""}`}
+              onClick={() => {
+                if (telemetry.running) {
+                  void engineRef.current?.stop();
+                  setAnalysers({ input: null, output: null });
+                }
+                setMode("onnx");
+              }}
+            >
+              Browser Neural (ONNX)
+            </button>
             <button
               type="button"
               role="tab"
@@ -633,13 +890,26 @@ export default function App() {
                 disabled={exportBusy}
                 onClick={() => void handleOfflineExport()}
               >
-                {exportBusy ? "Rendering..." : "Render & Export Converted WAV"}
+                {exportBusy ? "Rendering..." : "Render & Export DSP WAV"}
+              </button>
+            )}
+            {mode === "server" && uploadedName && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!serverInfo || serverConvertBusy}
+                onClick={() => void handleServerConvertFile()}
+              >
+                {serverConvertBusy ? "Converting..." : "Convert File via Server (Clean RVC)"}
               </button>
             )}
             {exportedFileUrl && (
-              <a className="btn" href={exportedFileUrl} download={`converted_${uploadedName.replace(/\.[^.]+$/, "")}.wav`}>
-                Download Converted File
-              </a>
+              <>
+                <audio controls src={exportedFileUrl} style={{ height: "34px", flex: "1 1 200px" }} />
+                <a className="btn" href={exportedFileUrl} download={`converted_${uploadedName.replace(/\.[^.]+$/, "")}.wav`}>
+                  Download Converted File
+                </a>
+              </>
             )}
           </div>
         )}
@@ -713,48 +983,185 @@ export default function App() {
         </div>
       </section>
 
-      {mode === "browser" ? (
+      {mode === "onnx" ? (
         <section className="panel">
           <div className="panel-head">
-            <h2>In-Browser DSP Sound Model Bank ({VOICE_PRESETS.length} Profiles)</h2>
-            <span className="badge">Zero Server Required · AudioWorklet DSP</span>
+            <h2>In-Browser Neural RVC Engine (onnxruntime-web · Zero Python Required)</h2>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <span className={`badge ${contentVecReady ? "ok" : ""}`}>
+                {contentVecReady ? "ContentVec Ready" : "ContentVec Unloaded"}
+              </span>
+              <span className={`badge ${onnxVoiceReady ? "ok" : ""}`}>
+                {onnxVoiceReady ? `Model: ${onnxCustomName || selectedOnnxId}` : "Pick Voice .onnx"}
+              </span>
+            </div>
           </div>
 
-          <div className="preset-toolbar">
-            <div className="source-tabs" role="tablist" aria-label="Preset category filter">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={presetCategory === "all"}
-                className={`source-pill ${presetCategory === "all" ? "active" : ""}`}
-                onClick={() => setPresetCategory("all")}
-              >
-                All ({VOICE_PRESETS.length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={presetCategory === "character"}
-                className={`source-pill ${presetCategory === "character" ? "active" : ""}`}
-                onClick={() => setPresetCategory("character")}
-              >
-                Character Profiles ({VOICE_PRESETS.filter((p) => p.category === "character").length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={presetCategory === "studio"}
-                className={`source-pill ${presetCategory === "studio" ? "active" : ""}`}
-                onClick={() => setPresetCategory("studio")}
-              >
-                Studio &amp; Synth ({VOICE_PRESETS.filter((p) => p.category === "studio").length})
-              </button>
+          <p style={{ margin: "0 0 12px", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+            Runs genuine RVC v2 neural networks directly inside Chrome/Edge via WebAssembly (`contentvec-f.onnx` +{" "}
+            {onnxPitchMethod === "crepe" ? "CREPE-tiny ONNX" : "YIN"} F0 + RVC `.onnx` vocoder). HuggingFace creators
+            for Zenin Maki / Misa Amane / Mikasa / Hinata / Power / Makima only publish PyTorch `.pth` pickles — use{" "}
+            <strong>AI Server Bridge</strong> on Windows/Linux to run them live OR export them to `.onnx` for standalone
+            browser use below.
+          </p>
+
+          <div className="preset-grid">
+            {BROWSER_ONNX_MODELS.map((model) => {
+              const isSelected = !onnxCustomName && selectedOnnxId === model.id;
+              return (
+                <button
+                  type="button"
+                  key={model.id}
+                  className={`preset-card ${isSelected ? "active" : ""}`}
+                  onClick={() => {
+                    setOnnxCustomName("");
+                    setSelectedOnnxId(model.id);
+                    setOnnxTune(model.recommendedTune);
+                    setOnnxVoiceReady(false);
+                  }}
+                >
+                  <div className="preset-top">
+                    <span className="preset-name">{model.name}</span>
+                    <span className="badge mono">{Math.round(model.sampleRate / 1000)}k</span>
+                  </div>
+                  <div className="preset-desc">{model.description}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="controls-grid" style={{ marginTop: "14px" }}>
+            <div className="slider-field">
+              <div className="slider-head">
+                <span>Pitch Tune (Semitones)</span>
+                <strong className="mono">{onnxTune >= 0 ? `+${onnxTune}` : onnxTune} st</strong>
+              </div>
+              <input
+                type="range"
+                min={-16}
+                max={16}
+                step={1}
+                value={onnxTune}
+                onChange={(e) => setOnnxTune(Number(e.target.value))}
+              />
+              <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                <button type="button" className="btn" style={{ padding: "3px 8px", fontSize: "0.74rem" }} onClick={() => setOnnxTune(12)}>
+                  +12 Deep-&gt;Fem
+                </button>
+                <button type="button" className="btn" style={{ padding: "3px 8px", fontSize: "0.74rem" }} onClick={() => setOnnxTune(0)}>
+                  0 Same Register
+                </button>
+                <button type="button" className="btn" style={{ padding: "3px 8px", fontSize: "0.74rem" }} onClick={() => setOnnxTune(-12)}>
+                  -12 Fem-&gt;Deep
+                </button>
+              </div>
             </div>
+
+            <div className="slider-field">
+              <div className="slider-head">
+                <span>Pitch Extractor</span>
+                <strong className="mono">{onnxPitchMethod === "crepe" ? "CREPE ONNX (~2MB)" : "YIN Instant"}</strong>
+              </div>
+              <select
+                className="select-input"
+                value={onnxPitchMethod}
+                onChange={(e) => setOnnxPitchMethod(e.target.value as PitchMethod)}
+              >
+                <option value="yin">YIN Pitch Tracker (0 MB download)</option>
+                <option value="crepe">CREPE-tiny ONNX (downloads ~2 MB once)</option>
+              </select>
+            </div>
+
+            <div className="slider-field">
+              <div className="slider-head">
+                <span>Load Local .onnx Files</span>
+                <strong className="mono">{onnxCustomName ? "Custom" : "HF CDN"}</strong>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                <label className="btn" style={{ padding: "5px 9px", fontSize: "0.76rem", cursor: "pointer" }}>
+                  Pick Character .onnx
+                  <input type="file" accept=".onnx" style={{ display: "none" }} onChange={(e) => void handleLoadLocalOnnxVoice(e)} />
+                </label>
+                <label className="btn" style={{ padding: "5px 9px", fontSize: "0.76rem", cursor: "pointer" }}>
+                  Pick contentvec.onnx
+                  <input type="file" accept=".onnx" style={{ display: "none" }} onChange={(e) => void handleLoadLocalOnnxEncoder(e)} />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="form-row" style={{ marginTop: "14px" }}>
+            <button
+              type="button"
+              className={`btn ${onnxMicRecording ? "btn-danger" : ""}`}
+              disabled={onnxBusy}
+              onClick={() => void handleOnnxMicToggle()}
+            >
+              {onnxMicRecording ? "Stop Mic Recording" : "1. Record Mic Phrase"}
+            </button>
+
+            <label className="btn" style={{ cursor: "pointer" }}>
+              1. Or Upload Speech (.wav/.mp3)
+              <input type="file" accept="audio/*" style={{ display: "none" }} onChange={(e) => void handleFileUpload(e)} />
+            </label>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={onnxBusy}
+              onClick={() => void handleRunOnnxConvert()}
+            >
+              {onnxBusy ? "Synthesizing Neural RVC..." : "2. Convert Voice with Neural ONNX"}
+            </button>
+          </div>
+
+          <div style={{ marginTop: "10px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+            <span className="mono">{onnxStatus}</span>
+          </div>
+
+          {onnxResultUrl && (
+            <div
+              className="form-row"
+              style={{
+                marginTop: "12px",
+                padding: "10px 12px",
+                background: "var(--panel-raised)",
+                borderRadius: "6px",
+                border: "1px solid var(--line)",
+              }}
+            >
+              <span className="mono" style={{ fontSize: "0.82rem" }}>
+                Neural ONNX Output ({onnxCustomName || selectedOnnxId})
+              </span>
+              <audio controls src={onnxResultUrl} style={{ height: "34px", flex: "1 1 220px" }} />
+              <a
+                className="btn btn-primary"
+                href={onnxResultUrl}
+                download={`neural_${(onnxCustomName || selectedOnnxId).replace(/[^a-zA-Z0-9_-]/g, "_")}.wav`}
+              >
+                Download Neural WAV
+              </a>
+            </div>
+          )}
+        </section>
+      ) : mode === "browser" ? (
+        <section className="panel">
+          <div className="panel-head">
+            <h2>In-Browser DSP Pitch &amp; Formant Shaper ({VOICE_PRESETS.length} Presets)</h2>
+            <span className="badge">AudioWorklet Pitch/EQ Only · Zero Downloads</span>
+          </div>
+
+          <p style={{ margin: "0 0 12px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+            Adjusts pitch semitones and formant EQ in real time without neural voice cloning. For real anime character
+            timbre, use <strong>Browser Neural (ONNX)</strong> or <strong>AI Server Bridge</strong>.
+          </p>
+
+          <div className="preset-toolbar">
             <input
               type="search"
-              aria-label="Filter browser voice presets"
+              aria-label="Filter browser DSP presets"
               className="text-input preset-search"
-              placeholder="Search Maki, Misa, Mikasa, Power..."
+              placeholder="Filter DSP presets..."
               value={presetQuery}
               onChange={(e) => setPresetQuery(e.target.value)}
             />
@@ -956,7 +1363,7 @@ export default function App() {
           </div>
 
           <div className="code-cmd mono" style={{ marginTop: "12px" }}>
-            <span>$ {corsOriginCommand}</span>
+            <span>Windows: {corsOriginCommand}</span>
             <button
               type="button"
               className="btn"
@@ -966,8 +1373,11 @@ export default function App() {
                 setTimeout(() => setCopiedCmd(false), 1800);
               }}
             >
-              {copiedCmd ? "Copied" : "Copy Launch Flag"}
+              {copiedCmd ? "Copied" : "Copy Windows Flag"}
             </button>
+          </div>
+          <div className="code-cmd mono" style={{ marginTop: "6px" }}>
+            <span>Linux/macOS: $ {linuxCorsOriginCommand}</span>
           </div>
 
           {serverHealth && (
@@ -993,6 +1403,17 @@ export default function App() {
                     value={serverInfo.tran ?? 0}
                     onChange={(e) => void handleServerSetting("tran", Number(e.target.value))}
                   />
+                  <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                    <button type="button" className="btn" style={{ padding: "2px 7px", fontSize: "0.72rem" }} onClick={() => void handleServerSetting("tran", 12)}>
+                      +12 Deep-&gt;Fem
+                    </button>
+                    <button type="button" className="btn" style={{ padding: "2px 7px", fontSize: "0.72rem" }} onClick={() => void handleServerSetting("tran", 0)}>
+                      0 Match
+                    </button>
+                    <button type="button" className="btn" style={{ padding: "2px 7px", fontSize: "0.72rem" }} onClick={() => void handleServerSetting("tran", -12)}>
+                      -12 Fem-&gt;Deep
+                    </button>
+                  </div>
                 </div>
 
                 <div className="slider-field">
@@ -1048,7 +1469,18 @@ export default function App() {
 
               {activeSlots.length > 0 && (
                 <>
-                  <h3 style={{ margin: "16px 0 4px", fontSize: "0.86rem" }}>Loaded Model Slots</h3>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", margin: "16px 0 4px", flexWrap: "wrap" }}>
+                    <h3 style={{ margin: 0, fontSize: "0.86rem" }}>Loaded Model Slots</h3>
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ padding: "5px 10px", fontSize: "0.78rem" }}
+                      disabled={exportingOnnx}
+                      onClick={() => void handleExportSlotToBrowserOnnx()}
+                    >
+                      {exportingOnnx ? "Exporting ONNX..." : "Export Active Slot -> Browser .onnx"}
+                    </button>
+                  </div>
                   <div className="slots-grid">
                     {activeSlots.map((slot) => (
                       <button

@@ -23,18 +23,45 @@ $downloadUrl = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack
 $workDir = Join-Path $env:TEMP "voicechanger_vbcable_setup"
 $zipPath = Join-Path $workDir "VBCABLE_Driver_Pack.zip"
 
+function Assert-NotReparsePoint {
+    param([string]$PathToCheck)
+    if (Test-Path -LiteralPath $PathToCheck) {
+        $item = Get-Item -LiteralPath $PathToCheck -Force
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Refusing to operate on symlink/junction path: $PathToCheck"
+        }
+    }
+}
+
+function Assert-SignedInstaller {
+    param([string]$InstallerPath)
+    Assert-NotReparsePoint $InstallerPath
+    $sig = Get-AuthenticodeSignature -LiteralPath $InstallerPath
+    if ($sig.Status -ne "Valid") {
+        Write-Error "VBCABLE_Setup_x64.exe signature check failed (status: $($sig.Status)) - refusing to run an unverified installer as Administrator."
+        exit 1
+    }
+    if ($sig.SignerCertificate.Subject -notmatch "BUREL VINCENT") {
+        Write-Error "VBCABLE_Setup_x64.exe is signed, but not by VB-Audio's publisher (got: $($sig.SignerCertificate.Subject)) - refusing to run as Administrator."
+        exit 1
+    }
+}
+
 if ($Uninstall) {
+    Assert-NotReparsePoint $workDir
     $installer = Get-ChildItem -Path $workDir -Filter "VBCABLE_Setup_x64.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $installer) {
         Write-Error "Installer not found in $workDir - run without -Uninstall first, or uninstall 'VB-Audio Virtual Cable' from Windows Settings > Apps."
         exit 1
     }
+    Assert-SignedInstaller $installer.FullName
     Write-Host "Uninstalling VB-Cable..."
     Start-Process -FilePath $installer.FullName -ArgumentList "-u", "-h" -Wait
     Write-Host "Done. A reboot may be required for the audio device list to update."
     exit 0
 }
 
+Assert-NotReparsePoint $workDir
 if (Test-Path $workDir) { Remove-Item -Path $workDir -Recurse -Force }
 New-Item -ItemType Directory -Path $workDir | Out-Null
 
@@ -58,15 +85,7 @@ if (-not $installer) {
 # Verify the installer is actually signed by VB-Audio before running it
 # elevated - HTTPS protects the transport, not against a compromised/hijacked
 # origin serving something else at the same URL.
-$sig = Get-AuthenticodeSignature -FilePath $installer.FullName
-if ($sig.Status -ne "Valid") {
-    Write-Error "VBCABLE_Setup_x64.exe signature check failed (status: $($sig.Status)) - refusing to run an unverified installer as Administrator. Download it yourself from https://vb-audio.com/Cable/ and inspect it before running."
-    exit 1
-}
-if ($sig.SignerCertificate.Subject -notmatch "BUREL VINCENT") {
-    Write-Error "VBCABLE_Setup_x64.exe is signed, but not by VB-Audio's publisher (got: $($sig.SignerCertificate.Subject)) - refusing to run as Administrator."
-    exit 1
-}
+Assert-SignedInstaller $installer.FullName
 
 Write-Host "Installing VB-Cable driver (silent)..."
 Start-Process -FilePath $installer.FullName -ArgumentList "-i", "-h" -Wait

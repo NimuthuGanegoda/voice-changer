@@ -88,3 +88,38 @@ def test_self_signed_cert_private_key_permissions(tmp_path, monkeypatch):
     assert key_path.read_bytes() == b"KEY"
     if sys.platform != "win32":
         assert (os.stat(key_path).st_mode & 0o777) == 0o600
+
+
+def test_security_headers_and_pna_only_for_allowed_origins():
+    from restapi.mods.trustedorigin import SecurityHeadersMiddleware
+
+    async def run(headers):
+        sent = []
+
+        async def app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        async def send(msg):
+            sent.append(msg)
+
+        mw = SecurityHeadersMiddleware(app, allowed_origins=["https://pages.example"], port=18888)
+        scope = {
+            "type": "http",
+            "path": "/info",
+            "scheme": "http",
+            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        }
+        await mw(scope, receive, send)
+        return {k.lower().decode(): v.decode() for k, v in sent[0]["headers"]}
+
+    allowed = asyncio.run(run({"Origin": "https://pages.example", "Access-Control-Request-Private-Network": "true"}))
+    assert allowed["x-content-type-options"] == "nosniff"
+    assert allowed["access-control-allow-private-network"] == "true"
+
+    untrusted = asyncio.run(run({"Origin": "https://evil.example", "Access-Control-Request-Private-Network": "true"}))
+    assert untrusted["x-content-type-options"] == "nosniff"
+    assert "access-control-allow-private-network" not in untrusted

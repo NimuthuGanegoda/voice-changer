@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 cd /d "%~dp0"
 
 where python >nul 2>nul

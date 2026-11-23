@@ -167,3 +167,21 @@ def test_community_samples_available_and_downloadable_from_zip(tmp_path, monkeyp
     assert saved["sampleId"] == "ZeninMaki_RVC"
     assert saved["modelFile"] == "Maki_e600_s2400.pth"
     assert saved["indexFile"] == "added_IVF30_Flat_nprobe_1_Maki_v2.index"
+    assert saved["defaultIndexRatio"] == 0.7
+
+
+def test_download_rejects_ssrf_and_insecure_schemes(tmp_path):
+    from downloader.Downloader import validate_remote_url
+
+    assert validate_remote_url("https://huggingface.co/Kuma6/Maki-Zenin/resolve/main/Maki.zip").startswith("https://")
+    for bad in (
+        "http://127.0.0.1:18888/secret",
+        "https://127.0.0.1/secret",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://192.168.1.10/model.zip",
+        "https://localhost/model.zip",
+        "file:///etc/passwd",
+        "",
+    ):
+        with pytest.raises(DownloadError):
+            validate_remote_url(bad)

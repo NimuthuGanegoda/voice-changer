@@ -147,8 +147,12 @@ def _download_sample(samples: list[ModelSamples], sample_id: str, model_dir: str
         if isinstance(info, RVCModelSlot) and not info.indexFile and params.get("useIndex") and getattr(sample, "indexUrl", ""):
             info.indexFile = _url_filename(sample.indexUrl, "model.index")
             download_no_tqdm({"url": sample.indexUrl, "saveTo": str(staging / info.indexFile)})
+        if isinstance(info, RVCModelSlot) and info.indexFile:
+            # Enable FAISS index blending by default when an index file is installed so
+            # community RVC models retain target speaker timbre rather than 0% blend.
+            info.defaultIndexRatio = 0.7
         icon_url = getattr(sample, "icon", "")
-        if icon_url and icon_url.startswith(("http://", "https://")):
+        if icon_url and icon_url.startswith("https://"):
             info.iconFile = _url_filename(icon_url, "icon.png")
             download_no_tqdm({"url": icon_url, "saveTo": str(staging / info.iconFile)})
         transaction.commit()

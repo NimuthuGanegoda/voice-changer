@@ -117,19 +117,18 @@ describe("VoiceProcessor DSP pitch & noise gate", () => {
     }
   });
 
-  it("exposes curated anime character DSP presets with valid finite processing", () => {
+  it("exposes honest AudioWorklet DSP presets with valid finite processing", () => {
     const ids = VOICE_PRESETS.map((p) => p.id);
     expect(ids).toEqual(
       expect.arrayContaining([
-        "zenin-maki",
-        "misa-amane",
-        "mikasa-ackerman",
-        "hinata-hyuga",
-        "power-csm",
-        "makima",
-        "raiden-shogun",
-        "yae-miko",
-        "gojo-satoru",
+        "natural-fem",
+        "anime-bright",
+        "velvet-alto",
+        "deep-baritone",
+        "studio-clean",
+        "cyber-radio",
+        "droid-synth",
+        "bypass",
       ]),
     );
     const input = new Float32Array(2048);

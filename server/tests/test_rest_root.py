@@ -94,3 +94,11 @@ def test_validation_error_route_handles_non_utf8_and_form_bodies():
     )
     assert form_res.status_code == 422
     assert "errors" in form_res.json()["detail"]
+
+
+def test_upload_dir_is_not_exposed_over_http(client, tmp_path):
+    upload = tmp_path / "upload_dir"
+    (upload / "xss.html").write_text("<script>alert(1)</script>")
+    response = client.get("/upload_dir/xss.html")
+    assert response.status_code == 404
+    assert response.headers.get("x-content-type-options") == "nosniff"

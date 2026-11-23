@@ -115,4 +115,28 @@ describe("VCServerClient & URL validation", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("exports ONNX models and blocks non-relative server binary paths", async () => {
+    const client = new VCServerClient("http://127.0.0.1:18888", "tok");
+    await expect(client.fetchServerBinary("https://evil.example/payload")).rejects.toThrow(/Invalid/);
+    await expect(client.fetchServerBinary("//evil.example/payload")).rejects.toThrow(/Invalid/);
+
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ status: "ok", path: "/tmp/Maki_simple.onnx", filename: "Maki_simple.onnx" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const exported = await client.exportSlotOnnx();
+      expect(exported).toEqual({
+        status: "ok",
+        path: "/tmp/Maki_simple.onnx",
+        filename: "Maki_simple.onnx",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

@@ -6,7 +6,11 @@
     <title>VC Client Web — Realtime Voice Changer</title>
     <meta
       name="description"
-      content="Realtime browser voice changer with low-latency DSP pitch/formant conversion and VC Client local AI server bridge (RVC, DDSP-SVC, so-vits-svc, MMVC, Beatrice)."
+      content="Realtime browser voice changer with AudioWorklet DSP, client-side ONNX neural RVC, and VC Client local AI server bridge."
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https://huggingface.co https://*.hf.co https://cdn-lfs*.hf.co https://cdn-lfs*.huggingface.co https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; media-src 'self' blob:; img-src 'self' data: https:; object-src 'none'; base-uri 'self';"
     />
     <link rel="icon" href="favicon.ico" />
   </head>

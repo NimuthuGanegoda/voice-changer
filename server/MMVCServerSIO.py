@@ -180,7 +180,7 @@ def localServer(logLevel: str = "critical", key_path: str | None = None, cert_pa
                 f"{os.path.basename(__file__)[:-3]}:app_socketio",
                 host=HOST,
                 port=int(PORT),
-                reload=True,
+                reload=os.getenv("VCCLIENT_DEV_RELOAD") == "1",
                 ssl_keyfile=key_path,
                 ssl_certfile=cert_path,
                 log_level=logLevel,

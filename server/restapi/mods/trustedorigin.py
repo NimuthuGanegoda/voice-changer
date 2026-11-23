@@ -8,6 +8,44 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 _PUBLIC_PREFIXES = ("/front/", "/assets/", "/trainer/", "/recorder/", "/extension/")
 _PUBLIC_PATHS = {"/", "/index.html", "/index.js", "/favicon.ico", "/api/hello", "/api/health", "/buymeacoffee.png", "/ort-wasm-simd.wasm"}
+_BASE_SECURITY_HEADERS = [
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"SAMEORIGIN"),
+    (b"referrer-policy", b"no-referrer"),
+]
+
+
+class SecurityHeadersMiddleware:
+    """Attach security headers and explicit Chrome Private-Network preflight header for trusted origins."""
+
+    def __init__(self, app: ASGIApp, allowed_origins: Optional[Sequence[str]] = None, port: Optional[int] = None):
+        self.allowed_origins = set(compute_local_origins(port))
+        if allowed_origins is not None:
+            self.allowed_origins.update(normalize_origins(allowed_origins))
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = Headers(scope=scope)
+        origin = headers.get("origin", "")
+        wants_pna = headers.get("access-control-request-private-network", "").lower() == "true"
+        allow_pna = wants_pna and bool(origin) and origin in self.allowed_origins
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                raw_headers = list(message.get("headers") or [])
+                existing = {name.lower() for name, _ in raw_headers}
+                for key, val in _BASE_SECURITY_HEADERS:
+                    if key not in existing:
+                        raw_headers.append((key, val))
+                if allow_pna and b"access-control-allow-private-network" not in existing:
+                    raw_headers.append((b"access-control-allow-private-network", b"true"))
+                message["headers"] = raw_headers
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 class TrustedOriginMiddleware:

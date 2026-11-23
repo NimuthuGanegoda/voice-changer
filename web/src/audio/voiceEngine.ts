@@ -3,7 +3,47 @@ import { concatFloat32, encodeWav } from "./wavEncoder";
 import { WORKLET_PROCESSOR_NAME, createWorkletModuleUrl } from "./workletSource";
 
 export type AudioSourceKind = "mic" | "sample" | "file";
-export type EngineMode = "browser" | "server";
+export type EngineMode = "onnx" | "browser" | "server";
+
+export const extractMonoFloat32 = (buf: AudioBuffer): Float32Array => {
+  if (buf.numberOfChannels === 1) {
+    return buf.getChannelData(0).slice();
+  }
+  const ch0 = buf.getChannelData(0);
+  const ch1 = buf.getChannelData(1);
+  const mono = new Float32Array(buf.length);
+  for (let i = 0; i < buf.length; i++) {
+    mono[i] = ((ch0[i] ?? 0) + (ch1[i] ?? 0)) * 0.5;
+  }
+  return mono;
+};
+
+/** Sequential chunked conversion via VC Server /test so slow CPUs never drop frames. */
+export const convertBufferViaServer = async (
+  mono: Float32Array,
+  sampleRate: number,
+  convertFn: ServerConvertFn,
+  onProgress?: (doneBlocks: number, totalBlocks: number) => void,
+): Promise<Blob> => {
+  const at48k = resampleFloat32(mono, sampleRate, 48000);
+  const blockSize = 9600; // 200 ms @ 48 kHz per request
+  const totalBlocks = Math.max(1, Math.ceil(at48k.length / blockSize));
+  const outChunks: Float32Array[] = [];
+
+  for (let idx = 0; idx < totalBlocks; idx++) {
+    const start = idx * blockSize;
+    const end = Math.min(at48k.length, start + blockSize);
+    const chunk = at48k.subarray(start, end);
+    const padded = new Float32Array(blockSize);
+    padded.set(chunk);
+    const pcm16 = float32ToInt16(padded);
+    const { output } = await convertFn(pcm16.buffer as ArrayBuffer);
+    const f32 = int16ToFloat32(new Int16Array(output));
+    outChunks.push(f32.subarray(0, Math.min(f32.length, chunk.length)));
+    onProgress?.(idx + 1, totalBlocks);
+  }
+  return encodeWav(concatFloat32(outChunks), 48000);
+};
 
 export type TelemetrySnapshot = {
   running: boolean;
