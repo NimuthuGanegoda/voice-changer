@@ -1,4 +1,3 @@
-import pyworld
 import numpy as np
 import scipy.signal as signal
 from const import PitchExtractorType
@@ -13,6 +12,7 @@ class HarvestPitchExtractor(PitchExtractor):
         self.pitchExtractorType: PitchExtractorType = "harvest"
 
     def extract(self, audio, pitchf, f0_up_key, sr, window, silence_front=0):
+        import pyworld
         audio = audio.detach().cpu().numpy()
         n_frames = int(len(audio) // window) + 1  # NOQA
         start_frame = int(silence_front * sr / window)

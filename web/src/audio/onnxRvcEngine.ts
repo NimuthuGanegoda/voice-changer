@@ -14,6 +14,7 @@ export type OnnxVoiceModel = {
   credit: string;
   description: string;
   modelUrl: string;
+  modelUrls?: string[];
   recommendedTune: number;
   isV1?: boolean;
 };
@@ -24,9 +25,97 @@ export const CONTENTVEC_ONNX_URL =
   "https://huggingface.co/wok000/weights_gpl/resolve/main/content-vec/contentvec-f.onnx";
 export const CREPE_TINY_ONNX_URL = "https://huggingface.co/wok000/weights/resolve/main/crepe/onnx/tiny.onnx";
 const MODEL_CACHE_NAME = "vc-onnx-models-v1";
+const ONNX_MODELS_CDN_BASE =
+  "https://raw.githubusercontent.com/NimuthuGanegoda/voice-changer/onnx-models";
+
+const partedOnnxUrls = (id: string, partCount = 2): { modelUrl: string; modelUrls: string[] } => {
+  const urls = Array.from({ length: partCount }, (_, idx) => `${ONNX_MODELS_CDN_BASE}/${id}.onnx.part${idx}`);
+  return { modelUrl: urls[0]!, modelUrls: urls };
+};
 
 /** Verified CORS-enabled ONNX RVC v2 voice models downloadable directly by Chrome/Edge. */
 export const BROWSER_ONNX_MODELS: OnnxVoiceModel[] = [
+  {
+    id: "ZeninMaki_RVC",
+    name: "Zenin Maki (Jujutsu Kaisen)",
+    sampleRate: 48000,
+    credit: "Kuma6",
+    description: "48 kHz RVC v2 neural ONNX voice (600 epochs · works directly in browser)",
+    ...partedOnnxUrls("ZeninMaki_RVC"),
+    recommendedTune: 8,
+  },
+  {
+    id: "MisaAmane_RVC",
+    name: "Misa Amane (Death Note)",
+    sampleRate: 48000,
+    credit: "Kuma6",
+    description: "48 kHz RVC v2 neural ONNX voice (350 epochs · works directly in browser)",
+    ...partedOnnxUrls("MisaAmane_RVC"),
+    recommendedTune: 12,
+  },
+  {
+    id: "MikasaAckerman_RVC",
+    name: "Mikasa Ackerman (Attack on Titan)",
+    sampleRate: 48000,
+    credit: "Kuma6",
+    description: "48 kHz RVC v2 neural ONNX voice (600 epochs · works directly in browser)",
+    ...partedOnnxUrls("MikasaAckerman_RVC"),
+    recommendedTune: 8,
+  },
+  {
+    id: "HinataHyuga_RVC",
+    name: "Hinata Hyuga (Naruto)",
+    sampleRate: 48000,
+    credit: "Tsuinzues",
+    description: "48 kHz RVC v2 neural ONNX voice (works directly in browser)",
+    ...partedOnnxUrls("HinataHyuga_RVC"),
+    recommendedTune: 12,
+  },
+  {
+    id: "Power_RVC",
+    name: "Power (Chainsaw Man)",
+    sampleRate: 40000,
+    credit: "Tre2003",
+    description: "40 kHz RVC v2 neural ONNX voice (works directly in browser)",
+    ...partedOnnxUrls("Power_RVC"),
+    recommendedTune: 10,
+  },
+  {
+    id: "Makima_RVC",
+    name: "Makima (Chainsaw Man)",
+    sampleRate: 40000,
+    credit: "gorogorogorochan",
+    description: "40 kHz RVC v2 neural ONNX voice (works directly in browser)",
+    ...partedOnnxUrls("Makima_RVC"),
+    recommendedTune: 8,
+  },
+  {
+    id: "RaidenShogun_RVC",
+    name: "Raiden Shogun (Genshin Impact)",
+    sampleRate: 40000,
+    credit: "Kamsaka",
+    description: "40 kHz RVC v2 neural ONNX voice (works directly in browser)",
+    ...partedOnnxUrls("RaidenShogun_RVC"),
+    recommendedTune: 8,
+  },
+  {
+    id: "YaeMiko_RVC",
+    name: "Yae Miko (Genshin Impact)",
+    sampleRate: 40000,
+    credit: "liilliliiiliil",
+    description: "40 kHz RVC v2 neural ONNX voice (500 epochs · works directly in browser)",
+    ...partedOnnxUrls("YaeMiko_RVC"),
+    recommendedTune: 10,
+  },
+  {
+    id: "GojoSatoru_RVC",
+    name: "Gojo Satoru (Jujutsu Kaisen)",
+    sampleRate: 40000,
+    credit: "mikasa3939",
+    description: "40 kHz RVC v2 neural ONNX voice (works directly in browser)",
+    ...partedOnnxUrls("GojoSatoru_RVC"),
+    recommendedTune: 0,
+  },
   {
     id: "Tsukuyomi-chan_o",
     name: "Tsukuyomi-chan (ONNX)",
@@ -314,14 +403,18 @@ const createGaussianNoise = (length: number): Float32Array => {
 };
 
 export const fetchCachedModelBuffer = async (
-  rawUrl: string,
+  rawUrlOrUrls: string | string[],
   onProgress?: (loadedBytes: number, totalBytes: number | null) => void,
 ): Promise<ArrayBuffer> => {
-  const url = assertHttpsModelUrl(rawUrl);
+  const urls = (Array.isArray(rawUrlOrUrls) ? rawUrlOrUrls : [rawUrlOrUrls]).map(assertHttpsModelUrl);
+  if (urls.length === 0) {
+    throw new Error("No model URL provided.");
+  }
+  const cacheKey = urls[0]!;
   if (typeof caches !== "undefined") {
     try {
       const cache = await caches.open(MODEL_CACHE_NAME);
-      const cached = await cache.match(url);
+      const cached = await cache.match(cacheKey);
       if (cached) {
         const buf = await cached.arrayBuffer();
         if (buf.byteLength > 0) {
@@ -334,44 +427,65 @@ export const fetchCachedModelBuffer = async (
     }
   }
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed downloading ONNX weights (${res.status}) from ${url}`);
-  }
-  const lenHdr = res.headers.get("Content-Length");
-  const totalBytes = lenHdr && /^\d+$/.test(lenHdr) ? Number(lenHdr) : null;
+  const partBuffers: Uint8Array[] = [];
+  let cumulativeLoaded = 0;
+  let estimatedTotal: number | null = null;
 
-  let buffer: ArrayBuffer;
-  if (res.body) {
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let loaded = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        chunks.push(value);
-        loaded += value.byteLength;
-        onProgress?.(loaded, totalBytes);
+  for (let pIdx = 0; pIdx < urls.length; pIdx++) {
+    const url = urls[pIdx]!;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed downloading ONNX weights (${res.status}) from ${url}`);
+    }
+    const lenHdr = res.headers.get("Content-Length");
+    const partTotal = lenHdr && /^\d+$/.test(lenHdr) ? Number(lenHdr) : null;
+    if (partTotal !== null && estimatedTotal === null) {
+      estimatedTotal = partTotal * urls.length;
+    }
+
+    if (res.body) {
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let partLoaded = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          partLoaded += value.byteLength;
+          onProgress?.(cumulativeLoaded + partLoaded, estimatedTotal);
+        }
       }
+      const partMerged = new Uint8Array(partLoaded);
+      let offset = 0;
+      for (const chunk of chunks) {
+        partMerged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      partBuffers.push(partMerged);
+      cumulativeLoaded += partLoaded;
+    } else {
+      const ab = await res.arrayBuffer();
+      const u8 = new Uint8Array(ab);
+      partBuffers.push(u8);
+      cumulativeLoaded += u8.byteLength;
+      onProgress?.(cumulativeLoaded, estimatedTotal ?? cumulativeLoaded);
     }
-    const merged = new Uint8Array(loaded);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    buffer = merged.buffer;
-  } else {
-    buffer = await res.arrayBuffer();
-    onProgress?.(buffer.byteLength, buffer.byteLength);
   }
+
+  const merged = new Uint8Array(cumulativeLoaded);
+  let writeOffset = 0;
+  for (const part of partBuffers) {
+    merged.set(part, writeOffset);
+    writeOffset += part.byteLength;
+  }
+  const buffer = merged.buffer;
 
   if (typeof caches !== "undefined") {
     try {
       const cache = await caches.open(MODEL_CACHE_NAME);
       await cache.put(
-        url,
+        cacheKey,
         new Response(buffer.slice(0), {
           headers: { "Content-Type": "application/octet-stream" },
         }),
@@ -440,11 +554,11 @@ export class BrowserOnnxRvcEngine {
 
   async ensureRvcModel(
     modelKey: string,
-    source: string | ArrayBuffer,
+    source: string | string[] | ArrayBuffer,
     hintSampleRate = 40000,
     onProgress?: (loadedBytes: number, totalBytes: number | null) => void,
   ): Promise<{ sampleRate: number; embChannels: number; isHalf: boolean }> {
-    if (this.rvcSession && this.rvcKey === modelKey && typeof source === "string") {
+    if (this.rvcSession && this.rvcKey === modelKey && !(source instanceof ArrayBuffer)) {
       return {
         sampleRate: this.rvcSampleRate,
         embChannels: this.rvcChannels,
@@ -452,7 +566,7 @@ export class BrowserOnnxRvcEngine {
       };
     }
     ensureOrtEnv();
-    const bytes = typeof source === "string" ? await fetchCachedModelBuffer(source, onProgress) : source;
+    const bytes = source instanceof ArrayBuffer ? source : await fetchCachedModelBuffer(source, onProgress);
     const session = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"] });
     const meta = (session as unknown as { metadata?: { customMetadataMap?: Record<string, string> } }).metadata
       ?.customMetadataMap;

@@ -103,15 +103,15 @@ export default function App() {
   const [exportingOnnx, setExportingOnnx] = useState<boolean>(false);
 
   // Browser Neural ONNX RVC State
-  const [selectedOnnxId, setSelectedOnnxId] = useState<string>(BROWSER_ONNX_MODELS[0]?.id ?? "Tsukuyomi-chan_o");
+  const [selectedOnnxId, setSelectedOnnxId] = useState<string>(BROWSER_ONNX_MODELS[0]?.id ?? "ZeninMaki_RVC");
   const [onnxCustomName, setOnnxCustomName] = useState<string>("");
   const [contentVecReady, setContentVecReady] = useState<boolean>(false);
   const [onnxVoiceReady, setOnnxVoiceReady] = useState<boolean>(false);
   const [crepeReady, setCrepeReady] = useState<boolean>(false);
   const [onnxPitchMethod, setOnnxPitchMethod] = useState<PitchMethod>("yin");
-  const [onnxTune, setOnnxTune] = useState<number>(10);
+  const [onnxTune, setOnnxTune] = useState<number>(BROWSER_ONNX_MODELS[0]?.recommendedTune ?? 8);
   const [onnxStatus, setOnnxStatus] = useState<string>(
-    "Select a voice and click Convert Voice — ContentVec encoder downloads once (~378 MB) and caches in your browser.",
+    "Select an anime character and click Convert Voice — ContentVec (~378 MB) and character ONNX weights cache in your browser.",
   );
   const [onnxBusy, setOnnxBusy] = useState<boolean>(false);
   const [onnxResultUrl, setOnnxResultUrl] = useState<string | null>(null);
@@ -226,6 +226,15 @@ export default function App() {
       }
       await engine.stop();
       setAnalysers({ input: null, output: null });
+      return;
+    }
+
+    if (mode === "onnx") {
+      if (source === "mic") {
+        await handleOnnxMicToggle();
+      } else {
+        await handleRunOnnxConvert();
+      }
       return;
     }
 
@@ -372,9 +381,13 @@ export default function App() {
     }
   };
 
-  const handleRunOnnxConvert = async () => {
+  const handleRunOnnxConvert = async (overrideBuffer?: AudioBuffer) => {
     const onnxEngine = onnxEngineRef.current;
-    const buf = engineRef.current?.getUploadedBuffer();
+    const buf =
+      overrideBuffer ??
+      (source === "sample"
+        ? engineRef.current?.getOrCreateSampleBuffer(48000)
+        : (engineRef.current?.getUploadedBuffer() ?? engineRef.current?.getOrCreateSampleBuffer(48000)));
     if (!onnxEngine) return;
     if (!buf) {
       setErrorMsg("Record your mic or upload a voice audio file (.wav/.mp3/.m4a) first.");
@@ -403,11 +416,16 @@ export default function App() {
         const chosen: OnnxVoiceModel =
           BROWSER_ONNX_MODELS.find((m) => m.id === selectedOnnxId) ?? BROWSER_ONNX_MODELS[0]!;
         setOnnxStatus(`Loading neural RVC voice ${chosen.name}...`);
-        await onnxEngine.ensureRvcModel(chosen.id, chosen.modelUrl, chosen.sampleRate, (loaded, total) => {
-          const mb = (loaded / (1024 * 1024)).toFixed(1);
-          const tot = total ? `${(total / (1024 * 1024)).toFixed(0)} MB` : "~55 MB";
-          setOnnxStatus(`Loading ${chosen.name}: ${mb} / ${tot}...`);
-        });
+        await onnxEngine.ensureRvcModel(
+          chosen.id,
+          chosen.modelUrls ?? chosen.modelUrl,
+          chosen.sampleRate,
+          (loaded, total) => {
+            const mb = (loaded / (1024 * 1024)).toFixed(1);
+            const tot = total ? `${(total / (1024 * 1024)).toFixed(0)} MB` : "~55 MB";
+            setOnnxStatus(`Loading ${chosen.name}: ${mb} / ${tot}...`);
+          },
+        );
         setOnnxVoiceReady(true);
       }
 
@@ -817,10 +835,21 @@ export default function App() {
 
             <button
               type="button"
-              className={`btn ${telemetry.running ? "btn-danger" : "btn-primary"}`}
+              className={`btn ${telemetry.running || onnxMicRecording ? "btn-danger" : "btn-primary"}`}
+              disabled={mode === "onnx" && onnxBusy}
               onClick={() => void handleToggleStart()}
             >
-              {telemetry.running ? "Stop Engine" : "Start Voice Changer"}
+              {telemetry.running
+                ? "Stop Engine"
+                : mode === "onnx"
+                  ? onnxMicRecording
+                    ? "Stop Mic Recording"
+                    : onnxBusy
+                      ? "Synthesizing ONNX..."
+                      : source === "mic"
+                        ? "Record Mic (ONNX)"
+                        : "Convert Voice (ONNX)"
+                  : "Start Voice Changer"}
             </button>
           </div>
         </div>
@@ -999,10 +1028,12 @@ export default function App() {
 
           <p style={{ margin: "0 0 12px", fontSize: "0.84rem", color: "var(--text-muted)" }}>
             Runs genuine RVC v2 neural networks directly inside Chrome/Edge via WebAssembly (`contentvec-f.onnx` +{" "}
-            {onnxPitchMethod === "crepe" ? "CREPE-tiny ONNX" : "YIN"} F0 + RVC `.onnx` vocoder). HuggingFace creators
-            for Zenin Maki / Misa Amane / Mikasa / Hinata / Power / Makima only publish PyTorch `.pth` pickles — use{" "}
-            <strong>AI Server Bridge</strong> on Windows/Linux to run them live OR export them to `.onnx` for standalone
-            browser use below.
+            {onnxPitchMethod === "crepe" ? "CREPE-tiny ONNX" : "YIN"} F0 + RVC `.onnx` vocoder). Includes pre-exported{" "}
+            <strong>
+              Zenin Maki, Misa Amane, Mikasa Ackerman, Hinata Hyuga, Power, Makima, Raiden Shogun, Yae Miko, and Gojo
+              Satoru
+            </strong>{" "}
+            neural ONNX models — cached locally in your browser with zero Python or local server installation required.
           </p>
 
           <div className="preset-grid">

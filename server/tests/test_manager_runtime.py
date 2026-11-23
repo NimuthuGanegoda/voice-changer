@@ -238,6 +238,9 @@ def test_rvcr2_zero_crossfade_silence_length_and_half_precision_reraise():
     assert math.isfinite(data[4])
 
     # Silent chunk must return output-sample-rate length sufficient for VoiceChangerV2 SOLA.
+    rvc.audio_buffer = None
+    rvc.pitchf_buffer = None
+    rvc.feature_buffer = None
     rvc.pipeline = SimpleNamespace(device=torch.device("cpu"))
     silent_in = np.zeros(4096, dtype=np.int16)
     silent_out = rvc.inference(silent_in, crossfade_frame=1024, sola_search_frame=576)
@@ -372,3 +375,20 @@ def test_rmvpe_onnx_short_audio_and_empty_f0_and_nono_v22():
     assert cv.extractFeatures(torch.zeros((1, 3200)), 12, False).shape == (1, 10, 768)
     assert calls[0][0] == ["units9"]
     assert calls[1][0] == ["unit12"]
+
+    # 6) _compress_float32_initializers_to_fp16 halves large weight initializers while keeping float32 Cast output.
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+    from voice_changer.RVC.onnxExporter.export2onnx import _compress_float32_initializers_to_fp16
+
+    w_arr = np.linspace(-1.0, 1.0, 512, dtype=np.float32).reshape(16, 32)
+    w_init = numpy_helper.from_array(w_arr, name="weight_f32")
+    x_in = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 16])
+    y_out = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, 32])
+    mm_node = helper.make_node("MatMul", inputs=["x", "weight_f32"], outputs=["y"])
+    graph = helper.make_graph([mm_node], "test_fp16_compress", [x_in], [y_out], [w_init])
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+    _compress_float32_initializers_to_fp16(model, min_elements=256)
+    assert model.graph.initializer[0].data_type == TensorProto.FLOAT16
+    assert model.graph.node[0].op_type == "Cast"
+    assert model.graph.node[0].output[0] == "weight_f32"

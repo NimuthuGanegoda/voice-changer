@@ -1,4 +1,3 @@
-import pyworld
 import numpy as np
 from const import PitchExtractorType
 
@@ -12,6 +11,7 @@ class DioPitchExtractor(PitchExtractor):
         self.pitchExtractorType: PitchExtractorType = "dio"
 
     def extract(self, audio, pitchf, f0_up_key, sr, window, silence_front=0):
+        import pyworld
         audio = audio.detach().cpu().numpy()
         n_frames = int(len(audio) // window) + 1  # NOQA
         start_frame = int(silence_front * sr / window)

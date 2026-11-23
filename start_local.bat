@@ -3,14 +3,42 @@ setlocal
 cd /d "%~dp0"
 
 set "PYTHON_EXE="
-for /f "delims=" %%p in ('where python 2^>nul') do if not defined PYTHON_EXE set "PYTHON_EXE=%%p"
-if not defined PYTHON_EXE if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
-if not defined PYTHON_EXE if exist "%ProgramFiles%\Python310\python.exe" set "PYTHON_EXE=%ProgramFiles%\Python310\python.exe"
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul
+    if not errorlevel 1 set "PYTHON_EXE=venv\Scripts\python.exe"
+)
+if not defined PYTHON_EXE if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul
+    if not errorlevel 1 set "PYTHON_EXE=.venv\Scripts\python.exe"
+)
+if not defined PYTHON_EXE if exist ".python310\tools\python.exe" (
+    ".python310\tools\python.exe" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul
+    if not errorlevel 1 set "PYTHON_EXE=%~dp0.python310\tools\python.exe"
+)
+for %%v in (Python310 Python311 Python312) do (
+    if not defined PYTHON_EXE if exist "%LOCALAPPDATA%\Programs\Python\%%v\python.exe" (
+        "%LOCALAPPDATA%\Programs\Python\%%v\python.exe" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul
+        if not errorlevel 1 set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\%%v\python.exe"
+    )
+    if not defined PYTHON_EXE if exist "%ProgramFiles%\%%v\python.exe" (
+        "%ProgramFiles%\%%v\python.exe" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul
+        if not errorlevel 1 set "PYTHON_EXE=%ProgramFiles%\%%v\python.exe"
+    )
+)
+if not defined PYTHON_EXE (
+    for /f "delims=" %%p in ('where python 2^>nul') do (
+        echo "%%p" | findstr /i "WindowsApps" >nul
+        if errorlevel 1 if not defined PYTHON_EXE (
+            "%%p" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul
+            if not errorlevel 1 set "PYTHON_EXE=%%p"
+        )
+    )
+)
 
 if not defined PYTHON_EXE (
-    echo python not found on PATH or standard Windows Python 3.10 directories.
+    echo python not found on PATH or standard Windows Python 3.10+ directories.
     echo Choose one option:
-    echo   1^) No Python at all: run install_windows.bat ^(installs user-scoped Python 3.10 + venv via winget^)
+    echo   1^) No Python at all: run install_windows.bat ^(installs user-scoped or portable Python 3.10 + venv^)
     echo   2^) Zero-install EXE: download VoiceChangerSetup.exe / VoiceChanger.exe ^(bundles Python internally^)
     echo   3^) Web Browser only: open https://nimuthuganegoda.github.io/voice-changer/ ^("Browser Neural ONNX" tab^)
     goto :fail

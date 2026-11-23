@@ -100,7 +100,7 @@ class Pipeline(object):
         return pitch, pitchf
 
     def extractFeatures(self, feats, embOutputLayer, useFinalProj):
-        with autocast(enabled=self.isHalf):
+        with torch.amp.autocast("cuda", enabled=bool(self.isHalf and self.device.type == "cuda")):
             try:
                 feats = self.embedder.extractFeatures(feats, embOutputLayer, useFinalProj)
                 if torch.isnan(feats).all():
@@ -117,7 +117,7 @@ class Pipeline(object):
     def infer(self, feats, p_len, pitch, pitchf, sid, out_size):
         try:
             with torch.no_grad():
-                with autocast(enabled=self.isHalf):
+                with torch.amp.autocast("cuda", enabled=bool(self.isHalf and self.device.type == "cuda")):
                     audio1 = self.inferencer.infer(feats,  p_len, pitch, pitchf, sid, out_size)                    
                     audio1 = (audio1 * 32767.5).data.to(dtype=torch.int16)
             return audio1
